@@ -1,0 +1,483 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ORISO Health Dashboard</title>
+    <style>
+      * { box-sizing: border-box; }
+      
+      body { 
+        margin: 0; 
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Helvetica Neue', sans-serif;
+        background: #f8fafc;
+        color: #1e293b;
+        line-height: 1.6;
+      }
+      
+      .layout { 
+        display: grid; 
+        grid-template-columns: 280px 1fr; 
+        min-height: 100vh;
+      }
+      
+      .sidebar { 
+        background: #ffffff;
+        border-right: 1px solid #e2e8f0;
+        padding: 24px 16px;
+        overflow-y: auto;
+      }
+      
+      .brand { 
+        font-weight: 700;
+        font-size: 18px;
+        margin-bottom: 24px;
+        color: #0f172a;
+        padding: 0 12px;
+        letter-spacing: -0.025em;
+      }
+      
+      .brand-subtitle {
+        font-size: 12px;
+        color: #64748b;
+        font-weight: 400;
+        margin-top: 4px;
+      }
+      
+      .svc { 
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        color: #475569;
+        transition: all 0.2s ease;
+        margin-bottom: 4px;
+      }
+      
+      .svc:hover { 
+        background: #f1f5f9;
+        color: #0f172a;
+      }
+      
+      .svc.active { 
+        background: #eff6ff;
+        color: #1e40af;
+        font-weight: 500;
+      }
+      
+      .status-dot { 
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        flex-shrink: 0;
+      }
+      
+      .main { 
+        padding: 32px 40px;
+        overflow-y: auto;
+        background: #f8fafc;
+      }
+      
+      .header {
+        margin-bottom: 32px;
+        padding-bottom: 24px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      
+      .card { 
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+      }
+      
+      .title { 
+        font-size: 24px;
+        font-weight: 700;
+        margin: 0 0 8px;
+        color: #0f172a;
+        letter-spacing: -0.025em;
+      }
+      
+      .muted { 
+        color: #64748b;
+        font-size: 14px;
+      }
+      
+      .grid { 
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+        margin-top: 20px;
+      }
+      
+      .pill { 
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        border-radius: 24px;
+        font-weight: 600;
+        font-size: 14px;
+        transition: all 0.2s ease;
+      }
+      
+      .pill.ok { 
+        background: #ecfdf5;
+        color: #059669;
+        border: 1px solid #a7f3d0;
+      }
+      
+      .pill.bad { 
+        background: #fef2f2;
+        color: #dc2626;
+        border: 1px solid #fecaca;
+      }
+      
+      .pill.neutral {
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #cbd5e1;
+      }
+      
+      code { 
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #475569;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+      }
+      
+      a { 
+        color: #2563eb;
+        text-decoration: none;
+        transition: color 0.2s ease;
+      }
+      
+      a:hover {
+        color: #1d4ed8;
+        text-decoration: underline;
+      }
+      
+      table { 
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 16px;
+        background: #ffffff;
+      }
+      
+      th, td { 
+        border: 1px solid #e2e8f0;
+        padding: 12px 16px;
+        text-align: left;
+        font-size: 14px;
+      }
+      
+      th { 
+        background: #f8fafc;
+        font-weight: 600;
+        color: #475569;
+      }
+      
+      td {
+        color: #334155;
+      }
+      
+      .component-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+      }
+      
+      .component-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #0f172a;
+        margin-bottom: 8px;
+        text-transform: capitalize;
+      }
+      
+      .quick-link {
+        display: inline-block;
+        padding: 10px 20px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        color: #475569;
+        font-weight: 500;
+        font-size: 14px;
+        transition: all 0.2s ease;
+        text-decoration: none;
+      }
+      
+      .quick-link:hover {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #0f172a;
+        text-decoration: none;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      }
+      
+      .status-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 500;
+      }
+      
+      .status-indicator.up { color: #059669; }
+      .status-indicator.down { color: #dc2626; }
+      
+      .section-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #0f172a;
+        margin: 24px 0 12px;
+      }
+      
+      @media (max-width: 768px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .sidebar {
+          border-right: none;
+          border-bottom: 1px solid #e2e8f0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          ORISO Health
+          <div class="brand-subtitle">System Monitor</div>
+        </div>
+        <div id="svc-list"></div>
+      </aside>
+      <main class="main">
+        <div class="header">
+          <div class="title" id="svc-title">Dashboard Overview</div>
+          <div class="muted" id="svc-url"></div>
+        </div>
+        <div class="card">
+          <div style="margin-bottom:16px">
+            <span id="svc-state" class="pill" style="display:none">Unknown</span>
+          </div>
+          <div class="grid" id="svc-details"></div>
+        </div>
+      </main>
+    </div>
+    <script>
+      const listEl = document.getElementById('svc-list');
+      const titleEl = document.getElementById('svc-title');
+      const urlEl = document.getElementById('svc-url');
+      const stateEl = document.getElementById('svc-state');
+      const detailsEl = document.getElementById('svc-details');
+
+      let services = {};
+      let activeKey = null;
+
+      function statusPill(ok) {
+        stateEl.className = 'pill ' + (ok ? 'ok' : 'bad');
+        stateEl.textContent = ok ? 'Operational' : 'Down';
+      }
+
+      function renderList() {
+        listEl.innerHTML = '';
+        
+        // Home entry
+        const home = document.createElement('div');
+        home.className = 'svc' + (activeKey === null ? ' active' : '');
+        const hdot = document.createElement('div');
+        hdot.className = 'status-dot';
+        hdot.style.background = '#3b82f6';
+        const hlabel = document.createElement('div');
+        hlabel.textContent = 'Dashboard';
+        home.appendChild(hdot);
+        home.appendChild(hlabel);
+        home.onclick = () => showHome();
+        listEl.appendChild(home);
+
+        // Cron Jobs entry
+        const cron = document.createElement('div');
+        cron.className = 'svc';
+        const cdot = document.createElement('div');
+        cdot.className = 'status-dot';
+        cdot.style.background = '#8b5cf6';
+        const clabel = document.createElement('div');
+        clabel.textContent = 'Health Checks';
+        cron.appendChild(cdot);
+        cron.appendChild(clabel);
+        cron.onclick = () => showCron();
+        listEl.appendChild(cron);
+
+        Object.entries(services).forEach(([key, svc]) => {
+          const row = document.createElement('div');
+          row.className = 'svc' + (key === activeKey ? ' active' : '');
+          const dot = document.createElement('div');
+          dot.className = 'status-dot';
+          dot.style.background = '#cbd5e1';
+          const label = document.createElement('div');
+          label.textContent = svc.name || key;
+          row.appendChild(dot);
+          row.appendChild(label);
+          row.onclick = () => selectService(key);
+          listEl.appendChild(row);
+
+          // prefetch status to color dots
+          fetch('/api/health/' + encodeURIComponent(key))
+            .then(r => r.json().catch(() => ({ status: 'DOWN' })))
+            .then(data => {
+              dot.style.background = (data.status === 'UP') ? '#10b981' : '#ef4444';
+              if (key === activeKey) statusPill(data.status === 'UP');
+            })
+            .catch(() => { dot.style.background = '#ef4444'; });
+        });
+      }
+
+      function renderDetails(json) {
+        detailsEl.innerHTML = '';
+        const rows = [];
+        
+        if (json.components) {
+          Object.entries(json.components).forEach(([k,v]) => {
+            const ok = v.status === 'UP';
+            const detailsHtml = v.details ? Object.entries(v.details).map(([dk,dv]) => 
+              `<div style="font-size:13px;color:#64748b;margin-top:4px"><strong>${dk}:</strong> ${dv}</div>`
+            ).join('') : '';
+            
+            rows.push(`
+              <div class="component-card">
+                <div class="component-title">${k}</div>
+                <div class="status-indicator ${ok?'up':'down'}">
+                  <div class="status-dot" style="background:${ok?'#10b981':'#ef4444'}"></div>
+                  ${v.status || 'UNKNOWN'}
+                </div>
+                ${detailsHtml}
+              </div>
+            `);
+          });
+        } else {
+          rows.push(`
+            <div class="component-card" style="grid-column: 1 / -1;">
+              <div class="component-title">Response Data</div>
+              <pre style="background:#f1f5f9;padding:16px;border-radius:8px;overflow:auto;font-size:13px;color:#475569">${escapeHtml(JSON.stringify(json, null, 2))}</pre>
+            </div>
+          `);
+        }
+        detailsEl.innerHTML = rows.join('');
+      }
+
+      function showHome() {
+        activeKey = null;
+        titleEl.textContent = 'Dashboard Overview';
+        urlEl.textContent = 'Real-time service health monitoring';
+        stateEl.style.display = 'none';
+        renderList();
+        
+        detailsEl.innerHTML = `
+          <div class="component-card" style="grid-column: 1 / -1;">
+            <div class="component-title">Quick Links</div>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
+              <a class="quick-link" target="_blank" href="https://app.oriso.site">Frontend</a>
+              <a class="quick-link" target="_blank" href="https://admin.oriso.site">Admin Panel</a>
+              <a class="quick-link" target="_blank" href="https://auth.oriso.site">Keycloak</a>
+              <a class="quick-link" target="_blank" href="https://status.oriso.site">Status Page</a>
+            </div>
+          </div>
+          <div class="component-card" style="grid-column: 1 / -1;">
+            <div class="component-title">About This Dashboard</div>
+            <p style="color:#64748b;font-size:14px;margin:8px 0">
+              This dashboard provides real-time health monitoring for all ORISO platform services.
+              Health checks run every 60 seconds to ensure system reliability.
+            </p>
+          </div>
+        `;
+      }
+
+      async function showCron() {
+        activeKey = '__cron__';
+        titleEl.textContent = 'Health Check History';
+        urlEl.textContent = 'Automated checks running every 60 seconds';
+        stateEl.style.display = 'none';
+        renderList();
+        
+        const runs = await fetch('/api/cron/runs').then(r => r.json()).catch(() => []);
+        const keys = Object.keys(services);
+        const headerCols = ['Check ID', 'Timestamp', ...keys.map(k => services[k].name || k), 'Overall'];
+        
+        let html = '<div style="overflow-x:auto"><table><thead><tr>' + 
+          headerCols.map(h => `<th>${h}</th>`).join('') + 
+          '</tr></thead><tbody>';
+        
+        runs.slice(0,10).forEach(run => {
+          const ok = run.overall === 'ALL_UP';
+          const timeFormatted = new Date(run.timestamp).toLocaleString();
+          html += '<tr>' +
+            `<td><code>#${run.id}</code></td>` +
+            `<td>${timeFormatted}</td>` +
+            keys.map(k => {
+              const status = run.results?.[k] || 'N/A';
+              const isUp = status === 'UP';
+              return `<td><span class="status-indicator ${isUp?'up':'down'}">
+                <div class="status-dot" style="background:${isUp?'#10b981':'#ef4444'}"></div>
+                ${status}
+              </span></td>`;
+            }).join('') +
+            `<td><span class="pill ${ok?'ok':'bad'}">${ok?'All Operational':'Issues Detected'}</span></td>` +
+          '</tr>';
+        });
+        html += '</tbody></table></div>';
+        detailsEl.innerHTML = html;
+      }
+
+      function selectService(key) {
+        activeKey = key;
+        const svc = services[key];
+        titleEl.textContent = svc.name || key;
+        urlEl.textContent = svc.url;
+        stateEl.style.display = 'inline-flex';
+        statusPill(false);
+        renderList();
+        
+        detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1"><div style="text-align:center;padding:20px;color:#94a3b8">Loading health data...</div></div>';
+        
+        fetch('/api/health/' + encodeURIComponent(key))
+          .then(r => r.json())
+          .then(json => {
+            const ok = json.status === 'UP';
+            statusPill(ok);
+            renderDetails(json);
+          })
+          .catch(() => { 
+            statusPill(false);
+            detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1;background:#fef2f2;border-color:#fecaca"><div style="color:#dc2626">Failed to fetch health data</div></div>';
+          });
+      }
+
+      function escapeHtml(str) { 
+        return String(str).replace(/[&<>]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));
+      }
+
+      // Initialize
+      fetch('/api/services')
+        .then(r => r.json())
+        .then(json => { 
+          services = json;
+          renderList();
+          showHome();
+        })
+        .catch(() => {
+          detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1;background:#fef2f2;border-color:#fecaca"><div style="color:#dc2626">Failed to load services configuration</div></div>';
+        });
+    </script>
+  </body>
+</html>

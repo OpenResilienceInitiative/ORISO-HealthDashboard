@@ -1,0 +1,7 @@
+nohup: ignoring input
+
+> health-dashboard@1.0.0 start
+> node server.js
+
+Health dashboard listening on http://localhost:9100
+Killed

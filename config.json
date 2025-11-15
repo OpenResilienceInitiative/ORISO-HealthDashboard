@@ -1,0 +1,6 @@
+{
+  "TenantService": { "name": "TenantService", "url": "http://tenantservice.caritas.svc.cluster.local:8081/actuator/health" },
+  "UserService": { "name": "UserService", "url": "http://userservice.caritas.svc.cluster.local:8082/actuator/health" },
+  "ConsultingTypeService": { "name": "ConsultingTypeService", "url": "http://consultingtypeservice.caritas.svc.cluster.local:8083/actuator/health" },
+  "AgencyService": { "name": "AgencyService", "url": "http://agencyservice.caritas.svc.cluster.local:8084/actuator/health" }
+}

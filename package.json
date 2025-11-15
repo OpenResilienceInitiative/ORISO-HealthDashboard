@@ -1,0 +1,15 @@
+{
+  "name": "health-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lightweight health dashboard for Caritas microservices",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
+
