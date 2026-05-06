@@ -92,6 +92,7 @@
         border-radius: 12px;
         padding: 24px;
         box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+        width: 100%;
       }
       
       .title { 
@@ -112,6 +113,35 @@
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 16px;
         margin-top: 20px;
+      }
+      
+      .stack-version-table {
+        width: 100%;
+        margin-top: 20px;
+      }
+      
+      .stack-version-table > div {
+        width: 100%;
+        overflow-x: auto;
+      }
+      
+      .stack-version-table table {
+        width: 100%;
+        min-width: 600px;
+        margin: 0 auto;
+      }
+      
+      .tables-container {
+        display: table-column;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-top: 20px;
+      }
+      
+      @media (max-width: 1200px) {
+        .tables-container {
+          grid-template-columns: 1fr;
+        }
       }
       
       .pill { 
@@ -319,6 +349,19 @@
         cron.onclick = () => showCron();
         listEl.appendChild(cron);
 
+        // Stack Version entry
+        const stack = document.createElement('div');
+        stack.className = 'svc';
+        const sdot = document.createElement('div');
+        sdot.className = 'status-dot';
+        sdot.style.background = '#f59e0b';
+        const slabel = document.createElement('div');
+        slabel.textContent = 'Stack Version';
+        stack.appendChild(sdot);
+        stack.appendChild(slabel);
+        stack.onclick = () => showStackVersions();
+        listEl.appendChild(stack);
+
         Object.entries(services).forEach(([key, svc]) => {
           const row = document.createElement('div');
           row.className = 'svc' + (key === activeKey ? ' active' : '');
@@ -341,6 +384,22 @@
             })
             .catch(() => { dot.style.background = '#ef4444'; });
         });
+
+        // Update Stack Version dot color based on availability
+        fetch('/api/stack-versions')
+          .then(r => r.json().catch(() => ({})))
+          .then(data => {
+            const allAvailable = Object.keys(data).length > 0 && Object.values(data).every(v => v && v.status === 'available');
+            const stackRows = Array.from(listEl.children);
+            const stackRow = stackRows.find(el => el.textContent.includes('Stack Version'));
+            if (stackRow) {
+              const stackDot = stackRow.querySelector('.status-dot');
+              if (stackDot) {
+                stackDot.style.background = allAvailable ? '#10b981' : '#f59e0b';
+              }
+            }
+          })
+          .catch(() => {});
       }
 
       function renderDetails(json) {
@@ -404,12 +463,100 @@
         `;
       }
 
+      async function showStackVersions() {
+        activeKey = '__stack__';
+        titleEl.textContent = 'Stack Version';
+        urlEl.textContent = 'Up Version - Java & Spring Boot versions for all services';
+        stateEl.style.display = 'none';
+        renderList();
+        
+        detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1"><div style="text-align:center;padding:20px;color:#94a3b8">Loading stack versions...</div></div>';
+        
+        try {
+          const versions = await fetch('/api/stack-versions').then(r => r.json());
+          
+          // Frontend Table
+          let frontendHtml = '<div class="stack-version-table"><div style="overflow-x:auto"><table><thead><tr>' +
+            '<th>Service</th>' +
+            '<th>React Version</th>' +
+            '<th>React DOM Version</th>' +
+            '<th>Status</th>' +
+            '</tr></thead><tbody>';
+          frontendHtml += '<tr>' +
+            '<td><strong>Frontend</strong></td>' +
+            '<td><code>19.2.3</code></td>' +
+            '<td><code>19.2.3</code></td>' +
+            '<td><span class="pill ok">Available</span></td>' +
+            '</tr>';
+          frontendHtml += '</tbody></table></div></div>';
+          
+          // Backend Services Table
+          const endpointMap = {
+            'UserService': 'http://oriso-platform-userservice.caritas.svc.cluster.local:8082/version',
+            'AgencyService': 'http://oriso-platform-agencyservice.caritas.svc.cluster.local:8084/version',
+            'ConsultingTypeService': 'http://oriso-platform-consultingtypeservice.caritas.svc.cluster.local:8083/version',
+            'TenantService': 'http://oriso-platform-tenantservice.caritas.svc.cluster.local:8081/version'
+          };
+          
+          let backendHtml = '<div class="stack-version-table"><div style="overflow-x:auto"><table><thead><tr>' +
+            '<th>Service</th>' +
+            '<th>Endpoint</th>' +
+            '<th>Java Version</th>' +
+            '<th>Spring Boot Version</th>' +
+            '<th>Spring Framework</th>' +
+            '<th>Status</th>' +
+            '</tr></thead><tbody>';
+          
+          const serviceOrder = ['UserService', 'AgencyService', 'ConsultingTypeService', 'TenantService'];
+          serviceOrder.forEach(key => {
+            const v = versions[key];
+            const endpoint = endpointMap[key] || 'N/A';
+            if (v) {
+              const isAvailable = v.status === 'available';
+              backendHtml += '<tr>' +
+                `<td><strong>${v.name}</strong></td>` +
+                `<td><code style="font-size:11px;word-break:break-all">${endpoint}</code></td>` +
+                `<td><code>${v.java}</code></td>` +
+                `<td><code>${v.springBoot}</code></td>` +
+                `<td><code>${v.spring}</code></td>` +
+                `<td><span class="pill ${isAvailable ? 'ok' : 'bad'}">${isAvailable ? 'Available' : 'Unavailable'}</span></td>` +
+                '</tr>';
+            } else {
+              backendHtml += '<tr>' +
+                `<td><strong>${key}</strong></td>` +
+                `<td><code style="font-size:11px;word-break:break-all">${endpoint}</code></td>` +
+                '<td><code>N/A</code></td>' +
+                '<td><code>N/A</code></td>' +
+                '<td><code>N/A</code></td>' +
+                '<td><span class="pill bad">Unavailable</span></td>' +
+                '</tr>';
+            }
+          });
+          
+          backendHtml += '</tbody></table></div></div>';
+          
+          // Combine both tables side by side
+          let html = '<div class="tables-container">' +
+            '<div><h3 style="margin-bottom:12px;color:#1e293b"></h3>' + frontendHtml + '</div>' +
+            '<div><h3 style="margin-bottom:12px;color:#1e293b"></h3>' + backendHtml + '</div>' +
+            '</div>';
+          
+          detailsEl.innerHTML = html;
+        } catch (e) {
+          detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1;background:#fef2f2;border-color:#fecaca"><div style="color:#dc2626">Failed to load stack versions: ' + e.message + '</div></div>';
+        }
+      }
+
       async function showCron() {
         activeKey = '__cron__';
         titleEl.textContent = 'Health Check History';
         urlEl.textContent = 'Automated checks running every 60 seconds';
         stateEl.style.display = 'none';
         renderList();
+        
+        // Update cron dot color
+        const cronDot = Array.from(listEl.children).find(el => el.textContent.includes('Health Checks'))?.querySelector('.status-dot');
+        if (cronDot) cronDot.style.background = '#8b5cf6';
         
         const runs = await fetch('/api/cron/runs').then(r => r.json()).catch(() => []);
         const keys = Object.keys(services);

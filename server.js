@@ -146,6 +146,44 @@ app.post('/api/cron/run', async (req, res) => {
   res.json(entry);
 });
 
+// API to get stack versions (up versions) for all backend services
+// Returns hardcoded "up versions" as reported by the services
+app.get('/api/stack-versions', (req, res) => {
+  // Hardcoded "up versions" - these are the reported versions from the services
+  const versions = {
+    'UserService': {
+      name: 'UserService',
+      java: '21',
+      springBoot: '4.0.1',
+      spring: '6.2.0',
+      status: 'available'
+    },
+    'AgencyService': {
+      name: 'AgencyService',
+      java: '21',
+      springBoot: '4.0.1',
+      spring: '6.2.0',
+      status: 'available'
+    },
+    'ConsultingTypeService': {
+      name: 'ConsultingTypeService',
+      java: '21',
+      springBoot: '4.0.1',
+      spring: '6.2.0',
+      status: 'available'
+    },
+    'TenantService': {
+      name: 'TenantService',
+      java: '21',
+      springBoot: '4.0.1',
+      spring: '6.2.0',
+      status: 'available'
+    }
+  };
+
+  res.json(versions);
+});
+
 app.listen(PORT, () => {
   console.log(`Health dashboard listening on http://localhost:${PORT}`);
 });
