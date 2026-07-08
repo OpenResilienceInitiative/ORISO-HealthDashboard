@@ -35,6 +35,23 @@ app.get('/api/services', (req, res) => {
   res.json(services);
 });
 
+app.get('/api/links', (req, res) => {
+  const envLinks = [
+    { key: 'frontend', name: 'Frontend', url: process.env.FRONTEND_URL },
+    { key: 'admin', name: 'Admin Panel', url: process.env.ADMIN_URL },
+    { key: 'keycloak', name: 'Keycloak', url: process.env.KEYCLOAK_URL },
+    { key: 'status', name: 'Status Page', url: process.env.STATUS_URL },
+    { key: 'signoz', name: 'Signoz', url: process.env.SIGNOZ_URL }
+  ];
+
+  const links = envLinks
+    .map(l => ({ ...l, url: (l.url ?? '').trim() }))
+    .filter(l => l.url.length > 0)
+    .map(l => ({ key: l.key, name: l.name, url: l.url }));
+
+  res.json(links);
+});
+
 app.get('/api/health/:key', (req, res) => {
   const key = req.params.key;
   const svc = services[key];
