@@ -35,6 +35,33 @@ app.get('/api/services', (req, res) => {
   res.json(services);
 });
 
+app.get('/api/links', (req, res) => {
+  const envLinks = [
+    { key: 'frontend', name: 'Frontend', url: process.env.FRONTEND_URL },
+    { key: 'admin', name: 'Admin Panel', url: process.env.ADMIN_URL },
+    { key: 'keycloak', name: 'Keycloak', url: process.env.KEYCLOAK_URL },
+    { key: 'status', name: 'Status Page', url: process.env.STATUS_URL },
+    { key: 'signoz', name: 'Signoz', url: process.env.SIGNOZ_URL }
+  ];
+
+  // Only allow http(s) URLs. Reject javascript:, data:, file:, etc. so a
+  // misconfigured/hostile env var cannot inject an executable href (XSS).
+  const safeHttpUrl = raw => {
+    try {
+      const u = new URL((raw ?? '').trim());
+      return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const links = envLinks
+    .map(l => ({ key: l.key, name: l.name, url: safeHttpUrl(l.url) }))
+    .filter(l => l.url);
+
+  res.json(links);
+});
+
 app.get('/api/health/:key', (req, res) => {
   const key = req.params.key;
   const svc = services[key];

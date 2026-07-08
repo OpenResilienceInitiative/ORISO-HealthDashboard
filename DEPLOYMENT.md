@@ -44,6 +44,17 @@ spec:
           value: "9001"
         - name: NODE_ENV
           value: "production"
+        # Optional: configure dashboard quick links shown on the home page
+        - name: FRONTEND_URL
+          value: "https://your-frontend.example.com"
+        - name: ADMIN_URL
+          value: "https://your-admin.example.com"
+        - name: KEYCLOAK_URL
+          value: "https://your-keycloak.example.com"
+        - name: STATUS_URL
+          value: "https://your-status-page.example.com"
+        - name: SIGNOZ_URL
+          value: "https://your-signoz.example.com"
         ports:
         - containerPort: 9001
           name: http

@@ -63,6 +63,13 @@ Edit `config.json` to configure which services to monitor:
 ```bash
 # Port (default: 9100)
 PORT=9100
+
+# Optional quick-link targets for the dashboard home page
+FRONTEND_URL=https://your-frontend.example.com
+ADMIN_URL=https://your-admin.example.com
+KEYCLOAK_URL=https://your-keycloak.example.com
+STATUS_URL=https://your-status-page.example.com
+SIGNOZ_URL=https://your-signoz.example.com
 ```
 
 ## API Endpoints
@@ -183,6 +190,17 @@ spec:
         env:
         - name: PORT
           value: "9001"
+        # Optional: configure dashboard quick links
+        - name: FRONTEND_URL
+          value: "https://your-frontend.example.com"
+        - name: ADMIN_URL
+          value: "https://your-admin.example.com"
+        - name: KEYCLOAK_URL
+          value: "https://your-keycloak.example.com"
+        - name: STATUS_URL
+          value: "https://your-status-page.example.com"
+        - name: SIGNOZ_URL
+          value: "https://your-signoz.example.com"
         ports:
         - containerPort: 9001
           name: http

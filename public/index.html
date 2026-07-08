@@ -445,13 +445,7 @@
         detailsEl.innerHTML = `
           <div class="component-card" style="grid-column: 1 / -1;">
             <div class="component-title">Quick Links</div>
-            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
-              <a class="quick-link" target="_blank" href="https://app.oriso.site">Frontend</a>
-              <a class="quick-link" target="_blank" href="https://admin.oriso.site">Admin Panel</a>
-              <a class="quick-link" target="_blank" href="https://auth.oriso.site">Keycloak</a>
-              <a class="quick-link" target="_blank" href="https://status.oriso.site">Status Page</a>
-              <a class="quick-link" target="_blank" href="https://signoz.oriso.site">Signoz</a>
-            </div>
+            <div id="quick-links" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px"></div>
           </div>
           <div class="component-card" style="grid-column: 1 / -1;">
             <div class="component-title">About This Dashboard</div>
@@ -461,6 +455,60 @@
             </p>
           </div>
         `;
+
+        const ql = document.getElementById('quick-links');
+        if (!ql) return;
+        ql.textContent = 'Loading...';
+
+        fetch('/api/links')
+          .then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          })
+          .then(links => {
+            ql.innerHTML = '';
+            if (!Array.isArray(links) || links.length === 0) {
+              const empty = document.createElement('div');
+              empty.className = 'muted';
+              empty.textContent = 'No quick links configured';
+              ql.appendChild(empty);
+              return;
+            }
+
+            links.forEach(l => {
+              if (!l || typeof l.url !== 'string' || typeof l.name !== 'string') return;
+              // Defense-in-depth: never assign a non-http(s) URL to href.
+              let safeUrl;
+              try {
+                const u = new URL(l.url);
+                if (u.protocol !== 'http:' && u.protocol !== 'https:') return;
+                safeUrl = u.href;
+              } catch {
+                return;
+              }
+              const a = document.createElement('a');
+              a.className = 'quick-link';
+              a.target = '_blank';
+              a.rel = 'noopener';
+              a.href = safeUrl;
+              a.textContent = l.name;
+              ql.appendChild(a);
+            });
+
+            if (ql.childElementCount === 0) {
+              const empty = document.createElement('div');
+              empty.className = 'muted';
+              empty.textContent = 'No quick links configured';
+              ql.appendChild(empty);
+            }
+          })
+          .catch(() => {
+            ql.innerHTML = '';
+            const err = document.createElement('div');
+            err.className = 'muted';
+            err.textContent = 'Failed to load quick links';
+            ql.appendChild(err);
+          });
       }
 
       async function showStackVersions() {
