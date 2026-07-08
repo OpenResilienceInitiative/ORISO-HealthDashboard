@@ -44,10 +44,20 @@ app.get('/api/links', (req, res) => {
     { key: 'signoz', name: 'Signoz', url: process.env.SIGNOZ_URL }
   ];
 
+  // Only allow http(s) URLs. Reject javascript:, data:, file:, etc. so a
+  // misconfigured/hostile env var cannot inject an executable href (XSS).
+  const safeHttpUrl = raw => {
+    try {
+      const u = new URL((raw ?? '').trim());
+      return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+    } catch {
+      return null;
+    }
+  };
+
   const links = envLinks
-    .map(l => ({ ...l, url: (l.url ?? '').trim() }))
-    .filter(l => l.url.length > 0)
-    .map(l => ({ key: l.key, name: l.name, url: l.url }));
+    .map(l => ({ key: l.key, name: l.name, url: safeHttpUrl(l.url) }))
+    .filter(l => l.url);
 
   res.json(links);
 });

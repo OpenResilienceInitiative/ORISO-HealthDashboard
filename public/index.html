@@ -477,11 +477,20 @@
 
             links.forEach(l => {
               if (!l || typeof l.url !== 'string' || typeof l.name !== 'string') return;
+              // Defense-in-depth: never assign a non-http(s) URL to href.
+              let safeUrl;
+              try {
+                const u = new URL(l.url);
+                if (u.protocol !== 'http:' && u.protocol !== 'https:') return;
+                safeUrl = u.href;
+              } catch {
+                return;
+              }
               const a = document.createElement('a');
               a.className = 'quick-link';
               a.target = '_blank';
               a.rel = 'noopener';
-              a.href = l.url;
+              a.href = safeUrl;
               a.textContent = l.name;
               ql.appendChild(a);
             });
