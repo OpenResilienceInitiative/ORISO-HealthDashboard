@@ -475,29 +475,7 @@
         try {
           const versions = await fetch('/api/stack-versions').then(r => r.json());
           
-          // Frontend Table
-          let frontendHtml = '<div class="stack-version-table"><div style="overflow-x:auto"><table><thead><tr>' +
-            '<th>Service</th>' +
-            '<th>React Version</th>' +
-            '<th>React DOM Version</th>' +
-            '<th>Status</th>' +
-            '</tr></thead><tbody>';
-          frontendHtml += '<tr>' +
-            '<td><strong>Frontend</strong></td>' +
-            '<td><code>19.2.3</code></td>' +
-            '<td><code>19.2.3</code></td>' +
-            '<td><span class="pill ok">Available</span></td>' +
-            '</tr>';
-          frontendHtml += '</tbody></table></div></div>';
-          
           // Backend Services Table
-          const endpointMap = {
-            'UserService': 'http://oriso-userservice.caritas.svc.cluster.local:8082/version',
-            'AgencyService': 'http://oriso-agencyservice.caritas.svc.cluster.local:8084/version',
-            'ConsultingTypeService': 'http://oriso-consultingtypeservice.caritas.svc.cluster.local:8083/version',
-            'TenantService': 'http://oriso-tenantservice.caritas.svc.cluster.local:8081/version'
-          };
-          
           let backendHtml = '<div class="stack-version-table"><div style="overflow-x:auto"><table><thead><tr>' +
             '<th>Service</th>' +
             '<th>Endpoint</th>' +
@@ -510,15 +488,15 @@
           const serviceOrder = ['UserService', 'AgencyService', 'ConsultingTypeService', 'TenantService'];
           serviceOrder.forEach(key => {
             const v = versions[key];
-            const endpoint = endpointMap[key] || 'N/A';
+            const endpoint = v?.endpoint || 'N/A';
             if (v) {
               const isAvailable = v.status === 'available';
               backendHtml += '<tr>' +
                 `<td><strong>${v.name}</strong></td>` +
                 `<td><code style="font-size:11px;word-break:break-all">${endpoint}</code></td>` +
-                `<td><code>${v.java}</code></td>` +
-                `<td><code>${v.springBoot}</code></td>` +
-                `<td><code>${v.spring}</code></td>` +
+                `<td><code>${v.java || 'N/A'}</code></td>` +
+                `<td><code>${v.springBoot || 'N/A'}</code></td>` +
+                `<td><code>${v.spring || 'N/A'}</code></td>` +
                 `<td><span class="pill ${isAvailable ? 'ok' : 'bad'}">${isAvailable ? 'Available' : 'Unavailable'}</span></td>` +
                 '</tr>';
             } else {
@@ -535,9 +513,7 @@
           
           backendHtml += '</tbody></table></div></div>';
           
-          // Combine both tables side by side
-          let html = '<div class="tables-container">' +
-            '<div><h3 style="margin-bottom:12px;color:#1e293b"></h3>' + frontendHtml + '</div>' +
+          const html = '<div class="tables-container">' +
             '<div><h3 style="margin-bottom:12px;color:#1e293b"></h3>' + backendHtml + '</div>' +
             '</div>';
           
