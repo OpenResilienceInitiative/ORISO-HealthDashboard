@@ -18,17 +18,35 @@ async function withServer(handler, callback) {
 }
 
 
+// Each backend Service publishes actuator on its own port; there is no shared
+// 8080. Verified against PreDev (ns caritas) on 2026-07-26 by reading back
+// /actuator/health from inside the cluster. Port 8080 times out on all four.
+const DEPLOYED_ENDPOINTS = {
+  AgencyService: 'http://oriso-platform-agencyservice.caritas.svc.cluster.local:8084/actuator/health',
+  ConsultingTypeService:
+    'http://oriso-platform-consultingtypeservice.caritas.svc.cluster.local:8083/actuator/health',
+  TenantService: 'http://oriso-platform-tenantservice.caritas.svc.cluster.local:8081/actuator/health',
+  UserService: 'http://oriso-platform-userservice.caritas.svc.cluster.local:8082/actuator/health',
+};
+
+
 test('service catalog points at the deployed Helm service names and ports', () => {
   const catalog = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
   assert.deepEqual(
-    Object.values(catalog).map(service => service.url).sort(),
-    [
-      'http://oriso-platform-agencyservice.caritas.svc.cluster.local:8080/actuator/health',
-      'http://oriso-platform-consultingtypeservice.caritas.svc.cluster.local:8080/actuator/health',
-      'http://oriso-platform-tenantservice.caritas.svc.cluster.local:8080/actuator/health',
-      'http://oriso-platform-userservice.caritas.svc.cluster.local:8080/actuator/health',
-    ],
+    Object.fromEntries(Object.entries(catalog).map(([key, service]) => [key, service.url])),
+    DEPLOYED_ENDPOINTS,
   );
+});
+
+
+test('no backend is probed on a port that serves nothing', () => {
+  const catalog = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
+  const ports = Object.values(catalog).map(service => new URL(service.url).port);
+
+  // A single repeated port is the signature of the 8080 regression: every
+  // backend answers on a distinct port, so duplicates mean at least one is wrong.
+  assert.equal(new Set(ports).size, ports.length, `ports must be distinct, got ${ports}`);
+  assert.equal(ports.includes('8080'), false, 'no backend actuator is served on 8080');
 });
 
 
