@@ -284,6 +284,152 @@
         font-size: 13px;
         margin-top: 8px;
       }
+
+      .inventory-shell {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: 16px;
+      }
+
+      .inventory-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+      }
+
+      .summary-item {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .summary-label {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .summary-value {
+        color: #0f172a;
+        font-size: 22px;
+        font-weight: 700;
+        margin-top: 4px;
+      }
+
+      .workload-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .workload-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 18px;
+      }
+
+      .workload-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .workload-name {
+        color: #0f172a;
+        font-size: 17px;
+        font-weight: 700;
+      }
+
+      .workload-meta {
+        color: #64748b;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        font-size: 13px;
+        margin-top: 4px;
+      }
+
+      .workload-sections {
+        display: grid;
+        grid-template-columns: 1fr 1.6fr 1fr;
+        gap: 14px;
+      }
+
+      .info-block {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 14px;
+        min-width: 0;
+      }
+
+      .info-title {
+        color: #475569;
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+      }
+
+      .info-row {
+        display: grid;
+        gap: 4px;
+        margin-top: 10px;
+      }
+
+      .info-row:first-of-type {
+        margin-top: 0;
+      }
+
+      .info-label {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .info-value {
+        color: #334155;
+        font-size: 14px;
+        overflow-wrap: anywhere;
+      }
+
+      .mono-value {
+        background: #eef2f7;
+        border: 1px solid #dbe4ef;
+        border-radius: 6px;
+        color: #334155;
+        display: block;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 8px;
+        overflow-wrap: anywhere;
+      }
+
+      .container-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .container-item {
+        border-top: 1px solid #e2e8f0;
+        padding-top: 10px;
+      }
+
+      .container-item:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      @media (max-width: 1100px) {
+        .workload-sections {
+          grid-template-columns: 1fr;
+        }
+      }
       
       @media (max-width: 768px) {
         .layout {
@@ -327,6 +473,12 @@
 
       let services = {};
       let activeKey = null;
+
+      function apiPath(path) {
+        const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
+        const base = window.location.pathname.replace(/\/$/, '');
+        return base ? `${base}/${normalizedPath}` : `/${normalizedPath}`;
+      }
 
       function statusPill(ok) {
         stateEl.className = 'pill ' + (ok ? 'ok' : 'bad');
@@ -389,7 +541,7 @@
           listEl.appendChild(row);
 
           // prefetch status to color dots
-          fetch('/api/health/' + encodeURIComponent(key))
+          fetch(apiPath('/api/health/' + encodeURIComponent(key)))
             .then(r => r.json().catch(() => ({ status: 'DOWN' })))
             .then(data => {
               dot.style.background = (data.status === 'UP') ? '#10b981' : '#ef4444';
@@ -399,7 +551,7 @@
         });
 
         // Update Helm Images dot color based on inventory availability.
-        fetch('/api/helm-workloads')
+        fetch(apiPath('/api/helm-workloads'))
           .then(r => r.json().catch(() => ({ workloads: [] })))
           .then(data => {
             sdot.style.background = data.workloads && data.workloads.length > 0 ? '#10b981' : '#f59e0b';
@@ -478,56 +630,121 @@
         detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1"><div style="text-align:center;padding:20px;color:#94a3b8">Loading Helm image inventory...</div></div>';
         
         try {
-          const inventory = await fetch('/api/helm-workloads').then(async r => {
+          const inventory = await fetch(apiPath('/api/helm-workloads')).then(async r => {
             const body = await r.json();
             if (!r.ok) throw new Error(body.error || 'Unable to load Helm image inventory');
             return body;
           });
 
-          const rows = inventory.workloads.flatMap(workload => {
+          const workloads = inventory.workloads || [];
+          const totalContainers = workloads.reduce((sum, workload) => sum + Math.max((workload.containers || []).length, 1), 0);
+          const readyWorkloads = workloads.filter(workload => (workload.pods || []).some(pod => pod.ready)).length;
+          const totalRestarts = workloads.reduce((sum, workload) => {
+            return sum + (workload.containers || []).reduce((innerSum, container) => innerSum + (container.restartCount || 0), 0);
+          }, 0);
+
+          const workloadCards = workloads.map(workload => {
             const containers = workload.containers && workload.containers.length > 0
               ? workload.containers
-              : [{ name: 'N/A', type: 'app', image: '', runningImage: '', digest: '', imageID: '', ready: false, restartCount: 0 }];
-
-            return containers.map((container, index) => {
+              : [{ name: 'N/A', type: 'app', image: '', runningImage: '', digest: '', imageID: '', ready: false, restartCount: 0, sourceBranch: '', sourceBranchSource: '' }];
+            const readyPodCount = (workload.pods || []).filter(pod => pod.ready).length;
+            const podCount = (workload.pods || []).length;
+            const workloadReady = readyPodCount > 0 && readyPodCount === podCount;
+            const containerHtml = containers.map(container => {
               const ready = container.ready ? 'Ready' : 'Not ready';
               const digest = container.digest || parseImageHash(container.imageID) || 'Pending';
               const image = container.runningImage || container.image || 'Pending';
-              const podSummary = `${workload.pods.filter(pod => pod.ready).length}/${workload.pods.length} pods ready`;
               const branch = container.sourceBranch || 'Unknown';
               const branchSource = container.sourceBranchSource || 'not exposed';
 
-              return '<tr>' +
-                `<td>${index === 0 ? `<strong>${escapeHtml(workload.name)}</strong><div class="muted">${escapeHtml(workload.kind)}${workload.chart ? ' - ' + escapeHtml(workload.chart) : ''}</div>` : ''}</td>` +
-                `<td>${index === 0 ? `<code>${escapeHtml(workload.helmRelease || 'unknown')}</code>` : ''}</td>` +
-                `<td>${index === 0 ? escapeHtml(formatReplicas(workload)) : ''}</td>` +
-                `<td><strong>${escapeHtml(container.name)}</strong><div class="muted">${escapeHtml(container.type || 'app')}</div></td>` +
-                `<td><code class="copyable">${escapeHtml(image)}</code></td>` +
-                `<td><code>${escapeHtml(branch)}</code><div class="muted">${escapeHtml(branchSource)}</div></td>` +
-                `<td><code class="copyable">${escapeHtml(shortDigest(digest))}</code></td>` +
-                `<td><span class="status-indicator ${container.ready ? 'up' : 'down'}"><div class="status-dot" style="background:${container.ready ? '#10b981' : '#ef4444'}"></div>${ready}</span><div class="muted">${escapeHtml(podSummary)}</div></td>` +
-                `<td><code>${escapeHtml(String(container.restartCount ?? 0))}</code></td>` +
-                '</tr>';
-            });
+              return `
+                <div class="container-item">
+                  <div class="workload-meta" style="margin:0 0 10px">
+                    <strong>${escapeHtml(container.name)}</strong>
+                    <span>${escapeHtml(container.type || 'app')}</span>
+                    <span class="status-indicator ${container.ready ? 'up' : 'down'}">
+                      <div class="status-dot" style="background:${container.ready ? '#10b981' : '#ef4444'}"></div>
+                      ${ready}
+                    </span>
+                  </div>
+                  <div class="info-row">
+                    <div class="info-label">Running Image</div>
+                    <div class="mono-value">${escapeHtml(image)}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="info-label">Image Digest</div>
+                    <div class="mono-value">${escapeHtml(digest)}</div>
+                  </div>
+                </div>
+              `;
+            }).join('');
+
+            return `
+              <div class="workload-card">
+                <div class="workload-header">
+                  <div>
+                    <div class="workload-name">${escapeHtml(workload.name)}</div>
+                    <div class="workload-meta">
+                      <span>${escapeHtml(workload.kind)}</span>
+                      <span>${escapeHtml(workload.chart || 'chart unknown')}</span>
+                      <span>release ${escapeHtml(workload.helmRelease || 'unknown')}</span>
+                    </div>
+                  </div>
+                  <span class="pill ${workloadReady ? 'ok' : 'bad'}">${workloadReady ? 'Running' : 'Needs Attention'}</span>
+                </div>
+                <div class="workload-sections">
+                  <div class="info-block">
+                    <div class="info-title">Runtime</div>
+                    <div class="info-row">
+                      <div class="info-label">Replicas</div>
+                      <div class="info-value">${escapeHtml(formatReplicas(workload))}</div>
+                    </div>
+                    <div class="info-row">
+                      <div class="info-label">Pods</div>
+                      <div class="info-value">${escapeHtml(`${readyPodCount}/${podCount} ready`)}</div>
+                    </div>
+                    <div class="info-row">
+                      <div class="info-label">Restarts</div>
+                      <div class="info-value">${escapeHtml(String(containers.reduce((sum, container) => sum + (container.restartCount || 0), 0)))}</div>
+                    </div>
+                  </div>
+                  <div class="info-block">
+                    <div class="info-title">Images</div>
+                    <div class="container-list">${containerHtml}</div>
+                  </div>
+                  <div class="info-block">
+                    <div class="info-title">Source</div>
+                    <div class="info-row">
+                      <div class="info-label">Branch</div>
+                      <div class="info-value"><code>${escapeHtml(containers[0]?.sourceBranch || 'Unknown')}</code></div>
+                    </div>
+                    <div class="info-row">
+                      <div class="info-label">Branch Source</div>
+                      <div class="info-value">${escapeHtml(containers[0]?.sourceBranchSource || 'not exposed')}</div>
+                    </div>
+                    <div class="info-row">
+                      <div class="info-label">Namespace</div>
+                      <div class="info-value"><code>${escapeHtml(workload.namespace || inventory.namespace)}</code></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
           }).join('');
 
-          let html = '<div class="stack-version-table" style="grid-column:1/-1">' +
-            `<div class="table-note">Namespace: <code>${escapeHtml(inventory.namespace)}</code>` +
-            `${inventory.releaseFilter?.length ? ` - Helm release filter: <code>${escapeHtml(inventory.releaseFilter.join(', '))}</code>` : ''}` +
-            ` - Updated: ${escapeHtml(new Date(inventory.generatedAt).toLocaleString())}</div>` +
-            '<div style="overflow-x:auto"><table><thead><tr>' +
-            '<th>Workload</th>' +
-            '<th>Helm Release</th>' +
-            '<th>Replicas</th>' +
-            '<th>Container</th>' +
-            '<th>Running Image</th>' +
-            '<th>Source Branch</th>' +
-            '<th>Image Hash</th>' +
-            '<th>Runtime</th>' +
-            '<th>Restarts</th>' +
-            '</tr></thead><tbody>' +
-            (rows || '<tr><td colspan="9">No Helm-managed workloads were found for this namespace.</td></tr>') +
-            '</tbody></table></div></div>';
+          let html = '<div class="inventory-shell">' +
+            '<div class="inventory-summary">' +
+              `<div class="summary-item"><div class="summary-label">Namespace</div><div class="summary-value">${escapeHtml(inventory.namespace)}</div></div>` +
+              `<div class="summary-item"><div class="summary-label">Workloads</div><div class="summary-value">${escapeHtml(String(workloads.length))}</div></div>` +
+              `<div class="summary-item"><div class="summary-label">Ready</div><div class="summary-value">${escapeHtml(`${readyWorkloads}/${workloads.length}`)}</div></div>` +
+              `<div class="summary-item"><div class="summary-label">Containers</div><div class="summary-value">${escapeHtml(String(totalContainers))}</div></div>` +
+              `<div class="summary-item"><div class="summary-label">Restarts</div><div class="summary-value">${escapeHtml(String(totalRestarts))}</div></div>` +
+            '</div>' +
+            `<div class="table-note">Updated: ${escapeHtml(new Date(inventory.generatedAt).toLocaleString())}` +
+            `${inventory.releaseFilter?.length ? ` - Helm release filter: <code>${escapeHtml(inventory.releaseFilter.join(', '))}</code>` : ''}</div>` +
+            '<div class="workload-list">' +
+            (workloadCards || '<div class="component-card">No Helm-managed workloads were found for this namespace.</div>') +
+            '</div></div>';
 
           detailsEl.innerHTML = html;
         } catch (e) {
@@ -546,7 +763,7 @@
         const cronDot = Array.from(listEl.children).find(el => el.textContent.includes('Health Checks'))?.querySelector('.status-dot');
         if (cronDot) cronDot.style.background = '#8b5cf6';
         
-        const runs = await fetch('/api/cron/runs').then(r => r.json()).catch(() => []);
+        const runs = await fetch(apiPath('/api/cron/runs')).then(r => r.json()).catch(() => []);
         const keys = Object.keys(services);
         const headerCols = ['Check ID', 'Timestamp', ...keys.map(k => services[k].name || k), 'Overall'];
         
@@ -586,7 +803,7 @@
         
         detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1"><div style="text-align:center;padding:20px;color:#94a3b8">Loading health data...</div></div>';
         
-        fetch('/api/health/' + encodeURIComponent(key))
+        fetch(apiPath('/api/health/' + encodeURIComponent(key)))
           .then(r => r.json())
           .then(json => {
             const ok = json.status === 'UP';
@@ -628,7 +845,7 @@
       }
 
       // Initialize
-      fetch('/api/services')
+      fetch(apiPath('/api/services'))
         .then(r => r.json())
         .then(json => { 
           services = json;
