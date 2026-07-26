@@ -7,6 +7,7 @@ Real-time health monitoring dashboard for all Online Beratung microservices. Pro
 - ✅ **Real-time Monitoring** - Checks services every 60 seconds
 - ✅ **Beautiful UI** - Modern dark-themed dashboard
 - ✅ **Service Details** - View detailed health information for each service
+- ✅ **Helm Image Inventory** - Shows Helm-deployed workloads with running images, source branch when exposed, and image hashes
 - ✅ **Historical Data** - Tracks last 10 health check runs
 - ✅ **Manual Refresh** - Trigger health checks on demand
 - ✅ **API Proxy** - Proxies health check requests to avoid CORS issues
@@ -63,6 +64,13 @@ Edit `config.json` to configure which services to monitor:
 ```bash
 # Port (default: 9100)
 PORT=9100
+
+# Namespace to inspect for Helm workloads. Defaults to the pod namespace in Kubernetes.
+ORISO_HELM_NAMESPACE=caritas
+
+# Optional comma-separated Helm release filter. Leave unset to show every
+# Helm-managed workload in the namespace.
+ORISO_HELM_RELEASES=oriso
 ```
 
 ## API Endpoints
@@ -136,6 +144,39 @@ Triggers an immediate health check of all services.
   "overall": "PARTIAL_DOWN"
 }
 ```
+
+### GET /api/helm-workloads
+Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured namespace with each container image and runtime image hash/digest from matching pods. `sourceBranch` is read from workload labels/annotations when present, or inferred from image tags such as `main`, `dev`, `pre-dev`, and `latest`.
+
+**Response:**
+```json
+{
+  "namespace": "caritas",
+  "releaseFilter": ["oriso"],
+  "count": 1,
+  "generatedAt": "2026-07-25T12:00:00.000Z",
+  "workloads": [
+    {
+      "kind": "Deployment",
+      "name": "oriso-userservice",
+      "helmRelease": "oriso",
+      "containers": [
+        {
+          "name": "userservice",
+          "image": "ghcr.io/openresilienceinitiative/oriso-userservice:rebuild",
+          "runningImage": "ghcr.io/openresilienceinitiative/oriso-userservice:rebuild",
+          "digest": "sha256:abc123",
+          "imageID": "containerd://sha256:abc123",
+          "sourceBranch": "dev",
+          "sourceBranchSource": "image tag"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The dashboard pod needs RBAC to list `pods`, `deployments`, `statefulsets`, and `daemonsets`; see `kubernetes-rbac.yaml`. For exact branch reporting across all services, add one of these labels or annotations to workloads during deployment: `app.kubernetes.io/source-branch`, `oriso.org/source-branch`, or `git.branch`.
 
 ## Architecture
 
@@ -375,4 +416,3 @@ Services must return JSON with `status` field:
 **Status:** Production Ready ✅  
 **Port:** 9001  
 **Access:** http://91.99.219.182:9001/
-
