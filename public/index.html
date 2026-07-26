@@ -592,22 +592,40 @@
         detailsEl.innerHTML = rows.join('');
       }
 
-      function showHome() {
+      function renderQuickLinks(links) {
+        if (!Array.isArray(links) || links.length === 0) {
+          return '<div style="color:#94a3b8;font-size:14px;margin-top:12px">No quick links configured</div>';
+        }
+
+        return links
+          .filter(link => link && link.label && link.url)
+          .map(link => `<a class="quick-link" target="_blank" rel="noopener noreferrer" href="${escapeHtml(link.url)}">${escapeHtml(link.label)}</a>`)
+          .join('');
+      }
+
+      async function loadQuickLinks() {
+        try {
+          const response = await fetch(apiPath('/api/quick-links'));
+          if (!response.ok) throw new Error('Unable to load quick links');
+          return await response.json();
+        } catch {
+          return [];
+        }
+      }
+
+      async function showHome() {
         activeKey = null;
         titleEl.textContent = 'Dashboard Overview';
         urlEl.textContent = 'Real-time service health monitoring';
         stateEl.style.display = 'none';
         renderList();
+        const quickLinks = await loadQuickLinks();
         
         detailsEl.innerHTML = `
           <div class="component-card" style="grid-column: 1 / -1;">
             <div class="component-title">Quick Links</div>
             <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
-              <a class="quick-link" target="_blank" href="https://app.oriso.site">Frontend</a>
-              <a class="quick-link" target="_blank" href="https://admin.oriso.site">Admin Panel</a>
-              <a class="quick-link" target="_blank" href="https://auth.oriso.site">Keycloak</a>
-              <a class="quick-link" target="_blank" href="https://status.oriso.site">Status Page</a>
-              <a class="quick-link" target="_blank" href="https://signoz.oriso.site">Signoz</a>
+              ${renderQuickLinks(quickLinks)}
             </div>
           </div>
           <div class="component-card" style="grid-column: 1 / -1;">

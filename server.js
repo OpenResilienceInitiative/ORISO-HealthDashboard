@@ -248,9 +248,33 @@ async function getHelmWorkloads() {
 // Load config
 const CONFIG_PATH = path.join(ROOT, 'config.json');
 let services = {};
+let quickLinks = [];
+const defaultQuickLinks = [
+  { label: 'Frontend', url: process.env.FRONTEND_URL || '' },
+  { label: 'Admin Panel', url: process.env.ADMIN_URL || '' },
+  { label: 'Keycloak', url: process.env.KEYCLOAK_URL || '' },
+  { label: 'Signoz', url: process.env.SIGNOZ_URL || '' }
+].filter(link => link.url);
+
+function readConfig(rawConfig) {
+  if (rawConfig.services) {
+    return {
+      services: rawConfig.services,
+      quickLinks: Array.isArray(rawConfig.quickLinks) ? rawConfig.quickLinks : defaultQuickLinks
+    };
+  }
+
+  return {
+    services: rawConfig,
+    quickLinks: defaultQuickLinks
+  };
+}
+
 try {
   const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
-  services = JSON.parse(raw);
+  const config = readConfig(JSON.parse(raw));
+  services = config.services;
+  quickLinks = config.quickLinks;
 } catch (err) {
   services = {
     tenantservice: { name: 'TenantService', url: process.env.TENANT_SERVICE_URL || 'http://oriso-tenantservice.caritas.svc.cluster.local:8081/actuator/health' },
@@ -262,6 +286,7 @@ try {
     keycloak: { name: 'Keycloak', url: 'http://localhost:8080/health' },
     cobproxy: { name: 'Nginx Proxy', url: 'http://localhost:8089/service/tenant/access' }
   };
+  quickLinks = defaultQuickLinks;
 }
 
 app.use(express.static(path.join(ROOT, 'public')));
@@ -269,6 +294,10 @@ app.use(express.json());
 
 app.get('/api/services', (req, res) => {
   res.json(services);
+});
+
+app.get('/api/quick-links', (req, res) => {
+  res.json(quickLinks);
 });
 
 app.get('/api/health/:key', (req, res) => {
