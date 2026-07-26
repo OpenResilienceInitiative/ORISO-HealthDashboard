@@ -6,6 +6,7 @@ import https from 'https';
 
 const app = express();
 const PORT = process.env.PORT || 9100;
+const HEALTH_CHECK_TIMEOUT_MS = Number(process.env.HEALTH_CHECK_TIMEOUT_MS || 5000);
 // Working directory where server.js is started; we assume you run from health-dashboard/
 const ROOT = path.resolve();
 const SERVICE_ACCOUNT_DIR = '/var/run/secrets/kubernetes.io/serviceaccount';
@@ -276,6 +277,12 @@ app.get('/api/health/:key', (req, res) => {
   if (!svc) return res.status(404).json({ error: 'Unknown service' });
 
   try {
+    let completed = false;
+    const sendFailure = (status, error) => {
+      if (completed) return;
+      completed = true;
+      res.status(status).json({ status: 'DOWN', error, url: svc.url });
+    };
     const url = new URL(svc.url);
     const reqOpts = {
       hostname: url.hostname,
@@ -290,12 +297,18 @@ app.get('/api/health/:key', (req, res) => {
       let data = '';
       r.on('data', chunk => (data += chunk));
       r.on('end', () => {
+        if (completed) return;
+        completed = true;
         const status = r.statusCode || 500;
         res.status(status).type(r.headers['content-type'] || 'application/json').send(data);
       });
     });
+    proxy.setTimeout(HEALTH_CHECK_TIMEOUT_MS, () => {
+      proxy.destroy();
+      sendFailure(504, `Health check timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms`);
+    });
     proxy.on('error', e => {
-      res.status(502).json({ status: 'DOWN', error: e.message });
+      sendFailure(502, e.message);
     });
     proxy.end();
   } catch (e) {
@@ -333,6 +346,10 @@ function requestHealth(urlStr) {
           }
           resolve({ code: r.statusCode || 0, up });
         });
+      });
+      req.setTimeout(HEALTH_CHECK_TIMEOUT_MS, () => {
+        req.destroy();
+        resolve({ code: 504, up: false });
       });
       req.on('error', () => resolve({ code: 0, up: false }));
       req.end();
