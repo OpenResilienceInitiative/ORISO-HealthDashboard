@@ -71,6 +71,14 @@ ORISO_HELM_NAMESPACE=caritas
 # Optional comma-separated Helm release filter. Leave unset to show every
 # Helm-managed workload in the namespace.
 ORISO_HELM_RELEASES=oriso
+
+# Optional GitHub token used to resolve exact package-version URLs for image
+# digests, e.g. /pkgs/container/oriso-agencyservice/1070196056?tag=pre-dev.
+# Without this token the dashboard links to the package page only.
+GITHUB_TOKEN=github_pat_or_classic_token_with_package_read_access
+
+# Package tag to prefer when the running pod only exposes sha256 image text.
+ORISO_PACKAGE_TAG=pre-dev
 ```
 
 ## API Endpoints
@@ -146,7 +154,7 @@ Triggers an immediate health check of all services.
 ```
 
 ### GET /api/helm-workloads
-Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured namespace with each container image and runtime image hash/digest from matching pods. `sourceBranch` is read from workload labels/annotations when present, or inferred from image tags such as `main`, `dev`, `pre-dev`, and `latest`.
+Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured namespace with each container image and runtime image hash/digest from matching pods. `sourceBranch` is read from workload labels/annotations when present, or inferred from image tags such as `main`, `dev`, `pre-dev`, and `latest`. When `GITHUB_TOKEN` or `GH_TOKEN` is available, ORISO image rows also include `packageUrl` pointing to the exact GitHub package version when the digest or tag can be matched.
 
 **Response:**
 ```json
@@ -167,6 +175,8 @@ Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured
           "runningImage": "ghcr.io/openresilienceinitiative/oriso-userservice:rebuild",
           "digest": "sha256:abc123",
           "imageID": "containerd://sha256:abc123",
+          "packageName": "oriso-userservice",
+          "packageUrl": "https://github.com/OpenResilienceInitiative/ORISO-UserService/pkgs/container/oriso-userservice/123456789?tag=pre-dev",
           "sourceBranch": "dev",
           "sourceBranchSource": "image tag"
         }
