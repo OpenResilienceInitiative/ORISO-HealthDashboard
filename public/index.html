@@ -902,17 +902,6 @@
           return `https://github.com/orgs/${encodeURIComponent(owner)}/packages/container/${encodeURIComponent(packageName)}`;
         }
 
-        if (parts.length === 1) {
-          return `https://hub.docker.com/_/${encodeURIComponent(parts[0])}`;
-        }
-
-        if (parts[0] === 'docker.io') {
-          if (parts.length === 2) {
-            return `https://hub.docker.com/_/${encodeURIComponent(parts[1])}`;
-          }
-          return `https://hub.docker.com/r/${encodeURIComponent(parts[1])}/${encodeURIComponent(parts.slice(2).join('/'))}`;
-        }
-
         return '';
       }
 
