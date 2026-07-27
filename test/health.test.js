@@ -31,7 +31,8 @@ const DEPLOYED_ENDPOINTS = {
 
 
 test('service catalog points at the deployed Helm service names and ports', () => {
-  const catalog = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
+  const config = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
+  const catalog = config.services;
   assert.deepEqual(
     Object.fromEntries(Object.entries(catalog).map(([key, service]) => [key, service.url])),
     DEPLOYED_ENDPOINTS,
@@ -40,7 +41,8 @@ test('service catalog points at the deployed Helm service names and ports', () =
 
 
 test('no backend is probed on a port that serves nothing', () => {
-  const catalog = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
+  const config = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
+  const catalog = config.services;
   const ports = Object.values(catalog).map(service => new URL(service.url).port);
 
   // A single repeated port is the signature of the 8080 regression: every
