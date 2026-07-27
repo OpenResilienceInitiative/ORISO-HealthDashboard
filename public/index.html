@@ -683,7 +683,7 @@
               const ready = container.ready ? 'Ready' : 'Not ready';
               const digest = container.digest || parseImageHash(container.imageID) || 'Pending';
               const image = container.runningImage || container.image || 'Pending';
-              const imageLink = packageLinkForImage(image || container.image);
+              const imageLink = packageLinkForContainer(image || container.image, workload, container);
               const branch = container.sourceBranch || 'Unknown';
               const branchSource = container.sourceBranchSource || 'not exposed';
               const digestHtml = imageLink
@@ -885,7 +885,45 @@
         return digest;
       }
 
-      function packageLinkForImage(image) {
+      const ORISO_PACKAGES = {
+        admin: { repo: 'ORISO-Admin', package: 'oriso-admin' },
+        agencyservice: { repo: 'ORISO-AgencyService', package: 'oriso-agencyservice' },
+        'caritas-health-dashboard': { repo: 'ORISO-HealthDashboard', package: 'health-dashboard' },
+        consultingtypeservice: { repo: 'ORISO-ConsultingTypeService', package: 'oriso-consultingtypeservice' },
+        'element-call': { repo: 'ORISO-ElementCall', package: 'element-call' },
+        frontend: { repo: 'ORISO-Frontend', package: 'oriso-frontend' },
+        'health-dashboard': { repo: 'ORISO-HealthDashboard', package: 'health-dashboard' },
+        keycloak: { repo: 'ORISO-Keycloak', package: 'oriso-keycloak' },
+        'livekit-token-service': { repo: 'ORISO-Livekit', package: 'livekit-token-service' },
+        tenantservice: { repo: 'ORISO-TenantService', package: 'oriso-tenantservice' },
+        userservice: { repo: 'ORISO-UserService', package: 'oriso-userservice' }
+      };
+
+      const ORISO_PACKAGE_REPOS = {
+        'health-dashboard': 'ORISO-HealthDashboard',
+        'livekit-token-service': 'ORISO-Livekit',
+        'oriso-admin': 'ORISO-Admin',
+        'oriso-agencyservice': 'ORISO-AgencyService',
+        'oriso-consultingtypeservice': 'ORISO-ConsultingTypeService',
+        'oriso-frontend': 'ORISO-Frontend',
+        'oriso-keycloak': 'ORISO-Keycloak',
+        'oriso-tenantservice': 'ORISO-TenantService',
+        'oriso-userservice': 'ORISO-UserService',
+        'element-call': 'ORISO-ElementCall'
+      };
+
+      function packageLinkForContainer(image, workload = {}, container = {}) {
+        const parsed = parseGhcrImage(image);
+        if (parsed && parsed.owner.toLowerCase() === 'openresilienceinitiative') {
+          const repo = ORISO_PACKAGE_REPOS[parsed.packageName] || inferPackage(workload, container)?.repo;
+          return repo ? githubPackageUrl(repo, parsed.packageName, parsed.tag) : '';
+        }
+
+        const inferred = inferPackage(workload, container);
+        return inferred ? githubPackageUrl(inferred.repo, inferred.package, parsed?.tag || '') : '';
+      }
+
+      function parseGhcrImage(image) {
         if (!image || image === 'Pending') return '';
         const reference = String(image)
           .replace(/^docker-pullable:\/\//, '')
@@ -897,12 +935,27 @@
         const parts = withoutTag.split('/').filter(Boolean);
 
         if (parts[0] === 'ghcr.io' && parts.length >= 3) {
-          const owner = parts[1];
+          const tag = colonIndex > slashIndex ? withoutDigest.slice(colonIndex + 1) : '';
           const packageName = parts.slice(2).join('/');
-          return `https://github.com/orgs/${encodeURIComponent(owner)}/packages/container/${encodeURIComponent(packageName)}`;
+          return { owner: parts[1], packageName, tag };
         }
 
-        return '';
+        return null;
+      }
+
+      function inferPackage(workload = {}, container = {}) {
+        const keys = [
+          workload.name,
+          container.name,
+          String(workload.name || '').replace(/^oriso-/, ''),
+          String(container.name || '').replace(/^oriso-/, '')
+        ].filter(Boolean);
+        return keys.map(key => ORISO_PACKAGES[key]).find(Boolean) || null;
+      }
+
+      function githubPackageUrl(repo, packageName, tag = '') {
+        const base = `https://github.com/OpenResilienceInitiative/${encodeURIComponent(repo)}/pkgs/container/${encodeURIComponent(packageName)}`;
+        return tag ? `${base}?tag=${encodeURIComponent(tag)}` : base;
       }
 
       // Initialize
