@@ -19,11 +19,43 @@ const HELM_RELEASES = (process.env.ORISO_HELM_RELEASES || process.env.ORISO_HELM
   .split(',')
   .map(value => value.trim())
   .filter(Boolean);
+const GITHUB_ORG = process.env.GITHUB_ORG || 'OpenResilienceInitiative';
+const GITHUB_PACKAGE_TAG = process.env.ORISO_PACKAGE_TAG || process.env.ORISO_ENV || 'pre-dev';
+const GITHUB_PACKAGE_CACHE_MS = Number(process.env.GITHUB_PACKAGE_CACHE_MS || 300000);
 const WORKLOAD_KINDS = [
   { kind: 'Deployment', resource: 'deployments' },
   { kind: 'StatefulSet', resource: 'statefulsets' },
   { kind: 'DaemonSet', resource: 'daemonsets' }
 ];
+
+const ORISO_PACKAGES = {
+  admin: { repo: 'ORISO-Admin', package: 'oriso-admin' },
+  agencyservice: { repo: 'ORISO-Kubernetes', package: 'oriso-agencyservice' },
+  'caritas-health-dashboard': { repo: 'ORISO-HealthDashboard', package: 'health-dashboard' },
+  consultingtypeservice: { repo: 'ORISO-ConsultingTypeService', package: 'oriso-consultingtypeservice' },
+  'element-call': { repo: 'ORISO-ElementCall', package: 'element-call' },
+  frontend: { repo: 'ORISO-Frontend', package: 'oriso-frontend' },
+  'health-dashboard': { repo: 'ORISO-HealthDashboard', package: 'health-dashboard' },
+  keycloak: { repo: 'ORISO-Keycloak', package: 'oriso-keycloak' },
+  'livekit-token-service': { repo: 'ORISO-Livekit', package: 'livekit-token-service' },
+  tenantservice: { repo: 'ORISO-TenantService', package: 'oriso-tenantservice' },
+  userservice: { repo: 'ORISO-UserService', package: 'oriso-userservice' }
+};
+
+const ORISO_PACKAGE_REPOS = {
+  'health-dashboard': 'ORISO-HealthDashboard',
+  'livekit-token-service': 'ORISO-Livekit',
+  'oriso-admin': 'ORISO-Admin',
+  'oriso-agencyservice': 'ORISO-Kubernetes',
+  'oriso-consultingtypeservice': 'ORISO-ConsultingTypeService',
+  'oriso-frontend': 'ORISO-Frontend',
+  'oriso-keycloak': 'ORISO-Keycloak',
+  'oriso-tenantservice': 'ORISO-TenantService',
+  'oriso-userservice': 'ORISO-UserService',
+  'element-call': 'ORISO-ElementCall'
+};
+
+const packageVersionCache = new Map();
 
 function readFileIfExists(filePath) {
   try {
@@ -57,6 +89,120 @@ function imageTag(image) {
   const colonIndex = image.lastIndexOf(':');
   if (colonIndex <= slashIndex) return '';
   return image.slice(colonIndex + 1);
+}
+
+function parseGhcrImage(image) {
+  if (!image) return null;
+  const reference = String(image)
+    .replace(/^docker-pullable:\/\//, '')
+    .replace(/^docker:\/\//, '');
+  const withoutDigest = reference.split('@')[0];
+  const slashIndex = withoutDigest.lastIndexOf('/');
+  const colonIndex = withoutDigest.lastIndexOf(':');
+  const withoutTag = colonIndex > slashIndex ? withoutDigest.slice(0, colonIndex) : withoutDigest;
+  const parts = withoutTag.split('/').filter(Boolean);
+
+  if (parts[0] === 'ghcr.io' && parts.length >= 3) {
+    return {
+      owner: parts[1],
+      packageName: parts.slice(2).join('/'),
+      tag: colonIndex > slashIndex ? withoutDigest.slice(colonIndex + 1) : ''
+    };
+  }
+
+  return null;
+}
+
+function inferPackage(workload = {}, container = {}) {
+  const keys = [
+    workload.metadata?.name,
+    container.name,
+    String(workload.metadata?.name || '').replace(/^oriso-/, ''),
+    String(container.name || '').replace(/^oriso-/, '')
+  ].filter(Boolean);
+  return keys.map(key => ORISO_PACKAGES[key]).find(Boolean) || null;
+}
+
+function githubPackageUrl(repo, packageName, versionId = '', tag = '') {
+  const base = `https://github.com/${GITHUB_ORG}/${encodeURIComponent(repo)}/pkgs/container/${encodeURIComponent(packageName)}`;
+  const versionPath = versionId ? `/${encodeURIComponent(versionId)}` : '';
+  const tagQuery = tag ? `?tag=${encodeURIComponent(tag)}` : '';
+  return `${base}${versionPath}${tagQuery}`;
+}
+
+function githubApiRequest(apiPath) {
+  return new Promise((resolve, reject) => {
+    const headers = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'oriso-health-dashboard'
+    };
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const req = https.request({
+      hostname: 'api.github.com',
+      path: apiPath,
+      method: 'GET',
+      headers
+    }, response => {
+      let data = '';
+      response.on('data', chunk => (data += chunk));
+      response.on('end', () => {
+        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`GitHub API returned HTTP ${response.statusCode}: ${data}`));
+          return;
+        }
+
+        try {
+          resolve(JSON.parse(data || '[]'));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.setTimeout(HEALTH_CHECK_TIMEOUT_MS, () => {
+      req.destroy();
+      reject(new Error(`GitHub API timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms`));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function packageVersions(packageName) {
+  const cached = packageVersionCache.get(packageName);
+  if (cached && Date.now() - cached.createdAt < GITHUB_PACKAGE_CACHE_MS) {
+    return cached.versions;
+  }
+
+  const versions = await githubApiRequest(
+    `/orgs/${encodeURIComponent(GITHUB_ORG)}/packages/container/${encodeURIComponent(packageName)}/versions?per_page=100`
+  );
+  packageVersionCache.set(packageName, { createdAt: Date.now(), versions });
+  return versions;
+}
+
+async function resolvePackageUrl({ repo, packageName, digest, tag }) {
+  const fallbackUrl = githubPackageUrl(repo, packageName, '', tag);
+  try {
+    const versions = await packageVersions(packageName);
+    const normalizedDigest = String(digest || '').toLowerCase();
+    const versionByDigest = normalizedDigest
+      ? versions.find(version => String(version.name || '').toLowerCase() === normalizedDigest)
+      : null;
+    const versionByTag = tag
+      ? versions.find(version => (version.metadata?.container?.tags || []).includes(tag))
+      : null;
+    const version = versionByDigest || versionByTag;
+    if (!version?.id) return fallbackUrl;
+
+    const versionTags = version.metadata?.container?.tags || [];
+    const selectedTag = tag && versionTags.includes(tag) ? tag : '';
+    return githubPackageUrl(repo, packageName, String(version.id), selectedTag);
+  } catch {
+    return fallbackUrl;
+  }
 }
 
 function normalizeBranchTag(tag) {
@@ -160,7 +306,7 @@ function kubeRequest(apiPath) {
   });
 }
 
-function containerRowsForWorkload(workload, pods) {
+async function containerRowsForWorkload(workload, pods) {
   const selector = workload.spec?.selector?.matchLabels || {};
   const podTemplate = workload.spec?.template?.spec || {};
   const containers = [
@@ -169,7 +315,7 @@ function containerRowsForWorkload(workload, pods) {
   ];
   const matchedPods = pods.filter(pod => podMatchesWorkloadSelector(pod, selector));
 
-  return containers.map(container => {
+  const rows = await Promise.all(containers.map(async container => {
     const statuses = matchedPods.flatMap(pod => [
       ...(pod.status?.initContainerStatuses || []),
       ...(pod.status?.containerStatuses || [])
@@ -178,6 +324,14 @@ function containerRowsForWorkload(workload, pods) {
     const digest = parseDigest(runningStatus.imageID);
     const runningImage = runningStatus.image || container.image || '';
     const { branch, source } = inferSourceBranch(workload, container.image || '', runningImage);
+    const parsedImage = parseGhcrImage(runningImage) || parseGhcrImage(container.image || '');
+    const inferredPackage = inferPackage(workload, container);
+    const packageName = parsedImage?.packageName || inferredPackage?.package || '';
+    const packageRepo = packageName ? (ORISO_PACKAGE_REPOS[packageName] || inferredPackage?.repo || '') : '';
+    const packageTag = parsedImage?.tag || branch || GITHUB_PACKAGE_TAG;
+    const packageUrl = packageName && packageRepo
+      ? await resolvePackageUrl({ repo: packageRepo, packageName, digest, tag: packageTag })
+      : '';
 
     return {
       name: container.name,
@@ -186,12 +340,16 @@ function containerRowsForWorkload(workload, pods) {
       runningImage,
       imageID: runningStatus.imageID || '',
       digest,
+      packageName,
+      packageUrl,
       sourceBranch: branch,
       sourceBranchSource: source,
       ready: runningStatus.ready === true,
       restartCount: runningStatus.restartCount ?? 0
     };
-  }).filter(container => container.image || container.runningImage || container.imageID);
+  }));
+
+  return rows.filter(container => container.image || container.runningImage || container.imageID);
 }
 
 async function getHelmWorkloads() {
@@ -205,11 +363,11 @@ async function getHelmWorkloads() {
   ]);
   const pods = podsResponse.items || [];
 
-  const workloads = workloadResponses.flatMap((response, index) => {
+  const workloadRows = workloadResponses.flatMap((response, index) => {
     const { kind } = WORKLOAD_KINDS[index];
     return (response.items || [])
       .filter(workload => helmReleaseAllowed(workload.metadata?.labels || {}))
-      .map(workload => {
+      .map(async workload => {
         const matchedPods = pods.filter(pod =>
           podMatchesWorkloadSelector(pod, workload.spec?.selector?.matchLabels || {})
         );
@@ -229,10 +387,11 @@ async function getHelmWorkloads() {
             ready: (pod.status?.containerStatuses || []).length > 0 &&
               (pod.status?.containerStatuses || []).every(status => status.ready === true)
           })),
-          containers: containerRowsForWorkload(workload, matchedPods)
+          containers: await containerRowsForWorkload(workload, matchedPods)
         };
       });
   });
+  const workloads = await Promise.all(workloadRows);
 
   workloads.sort((a, b) => `${a.kind}/${a.name}`.localeCompare(`${b.kind}/${b.name}`));
 
