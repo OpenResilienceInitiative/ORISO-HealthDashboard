@@ -683,7 +683,7 @@
               const ready = container.ready ? 'Ready' : 'Not ready';
               const digest = container.digest || parseImageHash(container.imageID) || 'Pending';
               const image = container.runningImage || container.image || 'Pending';
-              const imageLink = packageLinkForContainer(image || container.image, workload, container);
+              const imageLink = container.packageUrl || packageLinkForContainer(image || container.image, workload, container);
               const branch = container.sourceBranch || 'Unknown';
               const branchSource = container.sourceBranchSource || 'not exposed';
               const digestHtml = imageLink
@@ -710,7 +710,7 @@
                   <div class="info-row">
                     <div class="info-label">Image Digest</div>
                     <div class="mono-value">${digestHtml}</div>
-                    ${imageLink ? '<div class="image-link-note">Opens the matching GitHub/GHCR package.</div>' : ''}
+                    ${imageLink ? '<div class="image-link-note">Opens the matching GitHub package/version.</div>' : ''}
                   </div>
                 </div>
               `;
