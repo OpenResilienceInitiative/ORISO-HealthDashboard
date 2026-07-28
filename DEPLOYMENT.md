@@ -60,6 +60,15 @@ spec:
         # show every Helm-managed workload in the namespace.
         # - name: ORISO_HELM_RELEASES
         #   value: "oriso"
+        # Optional: enables exact GitHub package-version links for ORISO images.
+        # Without this, the dashboard falls back to package-level links.
+        # - name: GITHUB_TOKEN
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: health-dashboard-github
+        #       key: token
+        # - name: ORISO_PACKAGE_TAG
+        #   value: "pre-dev"
         ports:
         - containerPort: 9001
           name: http
@@ -143,6 +152,8 @@ kubectl edit deployment health-dashboard -n caritas
 - [ ] Dashboard loads in browser
 - [ ] All services show status (UP/DOWN)
 - [ ] Helm Images shows every Helm-managed workload with branch, running image, and image hash
+- [ ] ORISO image hashes link to exact GitHub package versions when `GITHUB_TOKEN` is configured
+- [ ] ORISO source branch is populated from exact GitHub package tags such as `pre-dev`, `dev`, or `main`
 - [ ] Health checks running every 60 seconds
 
 ## 🚨 Troubleshooting
@@ -163,6 +174,7 @@ kubectl logs -n caritas -l app=health-dashboard
 2. Confirm the Deployment uses `serviceAccountName: health-dashboard`
 3. Verify the dashboard namespace matches `ORISO_HELM_NAMESPACE`
 4. If `ORISO_HELM_RELEASES` is set, confirm it matches the actual Helm release name
+5. If exact package-version links are missing, configure `GITHUB_TOKEN` or `GH_TOKEN`; GitHub requires authentication to list package versions
 
 ### Services Show as DOWN
 1. Verify services are actually running: `kubectl get pods -n caritas`

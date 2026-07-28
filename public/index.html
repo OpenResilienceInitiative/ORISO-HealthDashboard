@@ -410,6 +410,17 @@
         overflow-wrap: anywhere;
       }
 
+      .mono-value a {
+        color: #1d4ed8;
+        font-weight: 600;
+      }
+
+      .image-link-note {
+        color: #64748b;
+        font-size: 12px;
+        margin-top: 6px;
+      }
+
       .container-list {
         display: grid;
         gap: 10px;
@@ -664,16 +675,28 @@
           const workloadCards = workloads.map(workload => {
             const containers = workload.containers && workload.containers.length > 0
               ? workload.containers
-              : [{ name: 'N/A', type: 'app', image: '', runningImage: '', digest: '', imageID: '', ready: false, restartCount: 0, sourceBranch: '', sourceBranchSource: '' }];
+              : [{ name: 'N/A', type: 'app', image: '', runningImage: '', digest: '', imageID: '', ready: false, restartCount: 0, sourceBranch: '', sourceBranchUrl: '', sourceBranchSource: '' }];
             const readyPodCount = (workload.pods || []).filter(pod => pod.ready).length;
             const podCount = (workload.pods || []).length;
             const workloadReady = readyPodCount > 0 && readyPodCount === podCount;
+            const sourceBranch = containers[0]?.sourceBranch || 'Unknown';
+            const sourceBranchUrl = containers[0]?.sourceBranchUrl || '';
+            const sourceBranchHtml = sourceBranchUrl
+              ? `<a href="${escapeAttribute(sourceBranchUrl)}" target="_blank" rel="noopener noreferrer"><code>${escapeHtml(sourceBranch)}</code></a>`
+              : `<code>${escapeHtml(sourceBranch)}</code>`;
             const containerHtml = containers.map(container => {
               const ready = container.ready ? 'Ready' : 'Not ready';
               const digest = container.digest || parseImageHash(container.imageID) || 'Pending';
               const image = container.runningImage || container.image || 'Pending';
+              const imageLink = container.packageUrl || packageLinkForContainer(image || container.image, workload, container);
               const branch = container.sourceBranch || 'Unknown';
               const branchSource = container.sourceBranchSource || 'not exposed';
+              const digestHtml = imageLink
+                ? `<a href="${escapeAttribute(imageLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(digest)}</a>`
+                : escapeHtml(digest);
+              const imageHtml = imageLink
+                ? `<a href="${escapeAttribute(imageLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(image)}</a>`
+                : escapeHtml(image);
 
               return `
                 <div class="container-item">
@@ -687,11 +710,12 @@
                   </div>
                   <div class="info-row">
                     <div class="info-label">Running Image</div>
-                    <div class="mono-value">${escapeHtml(image)}</div>
+                    <div class="mono-value">${imageHtml}</div>
                   </div>
                   <div class="info-row">
                     <div class="info-label">Image Digest</div>
-                    <div class="mono-value">${escapeHtml(digest)}</div>
+                    <div class="mono-value">${digestHtml}</div>
+                    ${imageLink ? '<div class="image-link-note">Opens the matching GitHub package/version.</div>' : ''}
                   </div>
                 </div>
               `;
@@ -734,7 +758,7 @@
                     <div class="info-title">Source</div>
                     <div class="info-row">
                       <div class="info-label">Branch</div>
-                      <div class="info-value"><code>${escapeHtml(containers[0]?.sourceBranch || 'Unknown')}</code></div>
+                      <div class="info-value">${sourceBranchHtml}</div>
                     </div>
                     <div class="info-row">
                       <div class="info-label">Branch Source</div>
@@ -838,6 +862,10 @@
         return String(str).replace(/[&<>]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));
       }
 
+      function escapeAttribute(str) {
+        return escapeHtml(str).replace(/"/g, '&quot;');
+      }
+
       function formatReplicas(workload) {
         if (workload.kind === 'DaemonSet') {
           return `${workload.readyReplicas || 0} ready`;
@@ -860,6 +888,79 @@
           return digest.slice(0, 27) + '...';
         }
         return digest;
+      }
+
+      const ORISO_PACKAGES = {
+        admin: { repo: 'ORISO-Admin', package: 'oriso-admin' },
+        agencyservice: { repo: 'ORISO-AgencyService', package: 'oriso-agencyservice' },
+        'caritas-health-dashboard': { repo: 'ORISO-HealthDashboard', package: 'health-dashboard' },
+        consultingtypeservice: { repo: 'ORISO-ConsultingTypeService', package: 'oriso-consultingtypeservice' },
+        'element-call': { repo: 'ORISO-ElementCall', package: 'element-call' },
+        frontend: { repo: 'ORISO-Frontend', package: 'oriso-frontend' },
+        'health-dashboard': { repo: 'ORISO-HealthDashboard', package: 'health-dashboard' },
+        keycloak: { repo: 'ORISO-Keycloak', package: 'oriso-keycloak' },
+        'livekit-token-service': { repo: 'ORISO-Livekit', package: 'livekit-token-service' },
+        tenantservice: { repo: 'ORISO-TenantService', package: 'oriso-tenantservice' },
+        userservice: { repo: 'ORISO-UserService', package: 'oriso-userservice' }
+      };
+
+      const ORISO_PACKAGE_REPOS = {
+        'health-dashboard': 'ORISO-HealthDashboard',
+        'livekit-token-service': 'ORISO-Livekit',
+        'oriso-admin': 'ORISO-Admin',
+        'oriso-agencyservice': 'ORISO-AgencyService',
+        'oriso-consultingtypeservice': 'ORISO-ConsultingTypeService',
+        'oriso-frontend': 'ORISO-Frontend',
+        'oriso-keycloak': 'ORISO-Keycloak',
+        'oriso-tenantservice': 'ORISO-TenantService',
+        'oriso-userservice': 'ORISO-UserService',
+        'element-call': 'ORISO-ElementCall'
+      };
+
+      function packageLinkForContainer(image, workload = {}, container = {}) {
+        const parsed = parseGhcrImage(image);
+        if (parsed && parsed.owner.toLowerCase() === 'openresilienceinitiative') {
+          const repo = ORISO_PACKAGE_REPOS[parsed.packageName] || inferPackage(workload, container)?.repo;
+          return repo ? githubPackageUrl(repo, parsed.packageName, parsed.tag) : '';
+        }
+
+        const inferred = inferPackage(workload, container);
+        return inferred ? githubPackageUrl(inferred.repo, inferred.package, parsed?.tag || '') : '';
+      }
+
+      function parseGhcrImage(image) {
+        if (!image || image === 'Pending') return '';
+        const reference = String(image)
+          .replace(/^docker-pullable:\/\//, '')
+          .replace(/^docker:\/\//, '');
+        const withoutDigest = reference.split('@')[0];
+        const slashIndex = withoutDigest.lastIndexOf('/');
+        const colonIndex = withoutDigest.lastIndexOf(':');
+        const withoutTag = colonIndex > slashIndex ? withoutDigest.slice(0, colonIndex) : withoutDigest;
+        const parts = withoutTag.split('/').filter(Boolean);
+
+        if (parts[0] === 'ghcr.io' && parts.length >= 3) {
+          const tag = colonIndex > slashIndex ? withoutDigest.slice(colonIndex + 1) : '';
+          const packageName = parts.slice(2).join('/');
+          return { owner: parts[1], packageName, tag };
+        }
+
+        return null;
+      }
+
+      function inferPackage(workload = {}, container = {}) {
+        const keys = [
+          workload.name,
+          container.name,
+          String(workload.name || '').replace(/^oriso-/, ''),
+          String(container.name || '').replace(/^oriso-/, '')
+        ].filter(Boolean);
+        return keys.map(key => ORISO_PACKAGES[key]).find(Boolean) || null;
+      }
+
+      function githubPackageUrl(repo, packageName, tag = '') {
+        const base = `https://github.com/OpenResilienceInitiative/${encodeURIComponent(repo)}/pkgs/container/${encodeURIComponent(packageName)}`;
+        return tag ? `${base}?tag=${encodeURIComponent(tag)}` : base;
       }
 
       // Initialize
