@@ -141,6 +141,26 @@ test('a hung service is bounded by the configured timeout', async () => {
 });
 
 
+test('the timeout bounds the whole attempt, including name resolution', async () => {
+  // request.setTimeout only arms once a socket exists, so DNS happens outside
+  // it. Against a resolver that stalls (macOS takes ~4.3s on a .local suffix)
+  // the probe ran for 5s under a 700ms setting before the wall-clock deadline
+  // was added. This asserts the upper bound, so it cannot regress on hosts
+  // where resolution is slow, and passes trivially where it is fast.
+  const startedAt = Date.now();
+  const result = await checkService(
+    { name: 'Unresolvable', url: 'http://nonexistent.caritas.svc.cluster.local:8080/actuator/health' },
+    { timeoutMs: 400 }
+  );
+
+  assert.equal(result.up, false);
+  assert.ok(
+    Date.now() - startedAt < 2_000,
+    `probe must stay near its 400ms budget, took ${Date.now() - startedAt}ms`
+  );
+});
+
+
 test('a refused connection is DOWN rather than an unhandled rejection', async () => {
   const result = await checkService({
     name: 'Gone',

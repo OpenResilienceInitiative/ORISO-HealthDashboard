@@ -19,9 +19,11 @@ export function checkService(service, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
 
     const transport = url.protocol === 'https:' ? https : http;
     let settled = false;
+    let deadline;
     const finish = result => {
       if (settled) return;
       settled = true;
+      clearTimeout(deadline);
       resolve(result);
     };
 
@@ -76,6 +78,22 @@ export function checkService(service, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
     request.on('error', error => {
       finish({ up: false, code: 0, body: null, error: error.message });
     });
+
+    // request.setTimeout only arms once a socket exists, so name resolution
+    // happens outside it -- a slow or sick resolver stalls the probe for as
+    // long as it likes. This wall-clock deadline bounds the whole attempt,
+    // which is what the caller's timeout is understood to mean.
+    deadline = setTimeout(() => {
+      request.destroy();
+      finish({
+        up: false,
+        code: 0,
+        body: null,
+        error: `Health request timed out after ${timeoutMs}ms`,
+      });
+    }, timeoutMs);
+    if (typeof deadline.unref === 'function') deadline.unref();
+
     request.end();
   });
 }
