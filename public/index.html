@@ -127,7 +127,7 @@
       
       .stack-version-table table {
         width: 100%;
-        min-width: 600px;
+        min-width: 920px;
         margin: 0 auto;
       }
       
@@ -271,6 +271,176 @@
         color: #0f172a;
         margin: 24px 0 12px;
       }
+
+      .copyable {
+        display: inline-block;
+        max-width: 360px;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      .table-note {
+        color: #64748b;
+        font-size: 13px;
+        margin-top: 8px;
+      }
+
+      .inventory-shell {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: 16px;
+      }
+
+      .inventory-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+      }
+
+      .summary-item {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .summary-label {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .summary-value {
+        color: #0f172a;
+        font-size: 22px;
+        font-weight: 700;
+        margin-top: 4px;
+      }
+
+      .workload-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .workload-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 18px;
+      }
+
+      .workload-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .workload-name {
+        color: #0f172a;
+        font-size: 17px;
+        font-weight: 700;
+      }
+
+      .workload-meta {
+        color: #64748b;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        font-size: 13px;
+        margin-top: 4px;
+      }
+
+      .workload-sections {
+        display: grid;
+        grid-template-columns: 1fr 1.6fr 1fr;
+        gap: 14px;
+      }
+
+      .info-block {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 14px;
+        min-width: 0;
+      }
+
+      .info-title {
+        color: #475569;
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+      }
+
+      .info-row {
+        display: grid;
+        gap: 4px;
+        margin-top: 10px;
+      }
+
+      .info-row:first-of-type {
+        margin-top: 0;
+      }
+
+      .info-label {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .info-value {
+        color: #334155;
+        font-size: 14px;
+        overflow-wrap: anywhere;
+      }
+
+      .mono-value {
+        background: #eef2f7;
+        border: 1px solid #dbe4ef;
+        border-radius: 6px;
+        color: #334155;
+        display: block;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 8px;
+        overflow-wrap: anywhere;
+      }
+
+      .mono-value a {
+        color: #1d4ed8;
+        font-weight: 600;
+      }
+
+      .image-link-note {
+        color: #64748b;
+        font-size: 12px;
+        margin-top: 6px;
+      }
+
+      .container-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .container-item {
+        border-top: 1px solid #e2e8f0;
+        padding-top: 10px;
+      }
+
+      .container-item:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      @media (max-width: 1100px) {
+        .workload-sections {
+          grid-template-columns: 1fr;
+        }
+      }
       
       @media (max-width: 768px) {
         .layout {
@@ -315,6 +485,12 @@
       let services = {};
       let activeKey = null;
 
+      function apiPath(path) {
+        const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
+        const base = window.location.pathname.replace(/\/$/, '');
+        return base ? `${base}/${normalizedPath}` : `/${normalizedPath}`;
+      }
+
       function statusPill(ok) {
         stateEl.className = 'pill ' + (ok ? 'ok' : 'bad');
         stateEl.textContent = ok ? 'Operational' : 'Down';
@@ -349,17 +525,17 @@
         cron.onclick = () => showCron();
         listEl.appendChild(cron);
 
-        // Stack Version entry
+        // Helm image inventory entry
         const stack = document.createElement('div');
-        stack.className = 'svc';
+        stack.className = 'svc' + (activeKey === '__helm__' ? ' active' : '');
         const sdot = document.createElement('div');
         sdot.className = 'status-dot';
         sdot.style.background = '#f59e0b';
         const slabel = document.createElement('div');
-        slabel.textContent = 'Stack Version';
+        slabel.textContent = 'Helm Images';
         stack.appendChild(sdot);
         stack.appendChild(slabel);
-        stack.onclick = () => showStackVersions();
+        stack.onclick = () => showHelmWorkloads();
         listEl.appendChild(stack);
 
         Object.entries(services).forEach(([key, svc]) => {
@@ -376,7 +552,7 @@
           listEl.appendChild(row);
 
           // prefetch status to color dots
-          fetch('/api/health/' + encodeURIComponent(key))
+          fetch(apiPath('/api/health/' + encodeURIComponent(key)))
             .then(r => r.json().catch(() => ({ status: 'DOWN' })))
             .then(data => {
               dot.style.background = (data.status === 'UP') ? '#10b981' : '#ef4444';
@@ -385,19 +561,11 @@
             .catch(() => { dot.style.background = '#ef4444'; });
         });
 
-        // Update Stack Version dot color based on availability
-        fetch('/api/stack-versions')
-          .then(r => r.json().catch(() => ({})))
+        // Update Helm Images dot color based on inventory availability.
+        fetch(apiPath('/api/helm-workloads'))
+          .then(r => r.json().catch(() => ({ workloads: [] })))
           .then(data => {
-            const allAvailable = Object.keys(data).length > 0 && Object.values(data).every(v => v && v.status === 'available');
-            const stackRows = Array.from(listEl.children);
-            const stackRow = stackRows.find(el => el.textContent.includes('Stack Version'));
-            if (stackRow) {
-              const stackDot = stackRow.querySelector('.status-dot');
-              if (stackDot) {
-                stackDot.style.background = allAvailable ? '#10b981' : '#f59e0b';
-              }
-            }
+            sdot.style.background = data.workloads && data.workloads.length > 0 ? '#10b981' : '#f59e0b';
           })
           .catch(() => {});
       }
@@ -435,22 +603,40 @@
         detailsEl.innerHTML = rows.join('');
       }
 
-      function showHome() {
+      function renderQuickLinks(links) {
+        if (!Array.isArray(links) || links.length === 0) {
+          return '<div style="color:#94a3b8;font-size:14px;margin-top:12px">No quick links configured</div>';
+        }
+
+        return links
+          .filter(link => link && link.label && link.url)
+          .map(link => `<a class="quick-link" target="_blank" rel="noopener noreferrer" href="${escapeHtml(link.url)}">${escapeHtml(link.label)}</a>`)
+          .join('');
+      }
+
+      async function loadQuickLinks() {
+        try {
+          const response = await fetch(apiPath('/api/quick-links'));
+          if (!response.ok) throw new Error('Unable to load quick links');
+          return await response.json();
+        } catch {
+          return [];
+        }
+      }
+
+      async function showHome() {
         activeKey = null;
         titleEl.textContent = 'Dashboard Overview';
         urlEl.textContent = 'Real-time service health monitoring';
         stateEl.style.display = 'none';
         renderList();
+        const quickLinks = await loadQuickLinks();
         
         detailsEl.innerHTML = `
           <div class="component-card" style="grid-column: 1 / -1;">
             <div class="component-title">Quick Links</div>
             <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
-              <a class="quick-link" target="_blank" href="https://app.oriso.site">Frontend</a>
-              <a class="quick-link" target="_blank" href="https://admin.oriso.site">Admin Panel</a>
-              <a class="quick-link" target="_blank" href="https://auth.oriso.site">Keycloak</a>
-              <a class="quick-link" target="_blank" href="https://status.oriso.site">Status Page</a>
-              <a class="quick-link" target="_blank" href="https://signoz.oriso.site">Signoz</a>
+              ${renderQuickLinks(quickLinks)}
             </div>
           </div>
           <div class="component-card" style="grid-column: 1 / -1;">
@@ -463,63 +649,143 @@
         `;
       }
 
-      async function showStackVersions() {
-        activeKey = '__stack__';
-        titleEl.textContent = 'Stack Version';
-        urlEl.textContent = 'Up Version - Java & Spring Boot versions for all services';
+      async function showHelmWorkloads() {
+        activeKey = '__helm__';
+        titleEl.textContent = 'Helm Images';
+        urlEl.textContent = 'Runtime image inventory for ORISO Helm-deployed workloads';
         stateEl.style.display = 'none';
         renderList();
         
-        detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1"><div style="text-align:center;padding:20px;color:#94a3b8">Loading stack versions...</div></div>';
+        detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1"><div style="text-align:center;padding:20px;color:#94a3b8">Loading Helm image inventory...</div></div>';
         
         try {
-          const versions = await fetch('/api/stack-versions').then(r => r.json());
-          
-          // Backend Services Table
-          let backendHtml = '<div class="stack-version-table"><div style="overflow-x:auto"><table><thead><tr>' +
-            '<th>Service</th>' +
-            '<th>Endpoint</th>' +
-            '<th>Java Version</th>' +
-            '<th>Spring Boot Version</th>' +
-            '<th>Spring Framework</th>' +
-            '<th>Status</th>' +
-            '</tr></thead><tbody>';
-          
-          const serviceOrder = ['UserService', 'AgencyService', 'ConsultingTypeService', 'TenantService'];
-          serviceOrder.forEach(key => {
-            const v = versions[key];
-            const endpoint = v?.endpoint || 'N/A';
-            if (v) {
-              const isAvailable = v.status === 'available';
-              backendHtml += '<tr>' +
-                `<td><strong>${v.name}</strong></td>` +
-                `<td><code style="font-size:11px;word-break:break-all">${endpoint}</code></td>` +
-                `<td><code>${v.java || 'N/A'}</code></td>` +
-                `<td><code>${v.springBoot || 'N/A'}</code></td>` +
-                `<td><code>${v.spring || 'N/A'}</code></td>` +
-                `<td><span class="pill ${isAvailable ? 'ok' : 'bad'}">${isAvailable ? 'Available' : 'Unavailable'}</span></td>` +
-                '</tr>';
-            } else {
-              backendHtml += '<tr>' +
-                `<td><strong>${key}</strong></td>` +
-                `<td><code style="font-size:11px;word-break:break-all">${endpoint}</code></td>` +
-                '<td><code>N/A</code></td>' +
-                '<td><code>N/A</code></td>' +
-                '<td><code>N/A</code></td>' +
-                '<td><span class="pill bad">Unavailable</span></td>' +
-                '</tr>';
-            }
+          const inventory = await fetch(apiPath('/api/helm-workloads')).then(async r => {
+            const body = await r.json();
+            if (!r.ok) throw new Error(body.error || 'Unable to load Helm image inventory');
+            return body;
           });
-          
-          backendHtml += '</tbody></table></div></div>';
-          
-          const html = '<div class="tables-container">' +
-            '<div><h3 style="margin-bottom:12px;color:#1e293b"></h3>' + backendHtml + '</div>' +
-            '</div>';
-          
+
+          const workloads = inventory.workloads || [];
+          const totalContainers = workloads.reduce((sum, workload) => sum + Math.max((workload.containers || []).length, 1), 0);
+          const readyWorkloads = workloads.filter(workload => (workload.pods || []).some(pod => pod.ready)).length;
+          const totalRestarts = workloads.reduce((sum, workload) => {
+            return sum + (workload.containers || []).reduce((innerSum, container) => innerSum + (container.restartCount || 0), 0);
+          }, 0);
+
+          const workloadCards = workloads.map(workload => {
+            const containers = workload.containers && workload.containers.length > 0
+              ? workload.containers
+              : [{ name: 'N/A', type: 'app', image: '', runningImage: '', digest: '', imageID: '', ready: false, restartCount: 0, sourceBranch: '', sourceBranchSource: '' }];
+            const readyPodCount = (workload.pods || []).filter(pod => pod.ready).length;
+            const podCount = (workload.pods || []).length;
+            const workloadReady = readyPodCount > 0 && readyPodCount === podCount;
+            const containerHtml = containers.map(container => {
+              const ready = container.ready ? 'Ready' : 'Not ready';
+              const digest = container.digest || parseImageHash(container.imageID) || 'Pending';
+              const image = container.runningImage || container.image || 'Pending';
+              const imageLink = container.packageUrl || packageLinkForContainer(image || container.image, workload, container);
+              const branch = container.sourceBranch || 'Unknown';
+              const branchSource = container.sourceBranchSource || 'not exposed';
+              const digestHtml = imageLink
+                ? `<a href="${escapeAttribute(imageLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(digest)}</a>`
+                : escapeHtml(digest);
+              const imageHtml = imageLink
+                ? `<a href="${escapeAttribute(imageLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(image)}</a>`
+                : escapeHtml(image);
+
+              return `
+                <div class="container-item">
+                  <div class="workload-meta" style="margin:0 0 10px">
+                    <strong>${escapeHtml(container.name)}</strong>
+                    <span>${escapeHtml(container.type || 'app')}</span>
+                    <span class="status-indicator ${container.ready ? 'up' : 'down'}">
+                      <div class="status-dot" style="background:${container.ready ? '#10b981' : '#ef4444'}"></div>
+                      ${ready}
+                    </span>
+                  </div>
+                  <div class="info-row">
+                    <div class="info-label">Running Image</div>
+                    <div class="mono-value">${imageHtml}</div>
+                  </div>
+                  <div class="info-row">
+                    <div class="info-label">Image Digest</div>
+                    <div class="mono-value">${digestHtml}</div>
+                    ${imageLink ? '<div class="image-link-note">Opens the matching GitHub package/version.</div>' : ''}
+                  </div>
+                </div>
+              `;
+            }).join('');
+
+            return `
+              <div class="workload-card">
+                <div class="workload-header">
+                  <div>
+                    <div class="workload-name">${escapeHtml(workload.name)}</div>
+                    <div class="workload-meta">
+                      <span>${escapeHtml(workload.kind)}</span>
+                      <span>${escapeHtml(workload.chart || 'chart unknown')}</span>
+                      <span>release ${escapeHtml(workload.helmRelease || 'unknown')}</span>
+                    </div>
+                  </div>
+                  <span class="pill ${workloadReady ? 'ok' : 'bad'}">${workloadReady ? 'Running' : 'Needs Attention'}</span>
+                </div>
+                <div class="workload-sections">
+                  <div class="info-block">
+                    <div class="info-title">Runtime</div>
+                    <div class="info-row">
+                      <div class="info-label">Replicas</div>
+                      <div class="info-value">${escapeHtml(formatReplicas(workload))}</div>
+                    </div>
+                    <div class="info-row">
+                      <div class="info-label">Pods</div>
+                      <div class="info-value">${escapeHtml(`${readyPodCount}/${podCount} ready`)}</div>
+                    </div>
+                    <div class="info-row">
+                      <div class="info-label">Restarts</div>
+                      <div class="info-value">${escapeHtml(String(containers.reduce((sum, container) => sum + (container.restartCount || 0), 0)))}</div>
+                    </div>
+                  </div>
+                  <div class="info-block">
+                    <div class="info-title">Images</div>
+                    <div class="container-list">${containerHtml}</div>
+                  </div>
+                  <div class="info-block">
+                    <div class="info-title">Source</div>
+                    <div class="info-row">
+                      <div class="info-label">Branch</div>
+                      <div class="info-value"><code>${escapeHtml(containers[0]?.sourceBranch || 'Unknown')}</code></div>
+                    </div>
+                    <div class="info-row">
+                      <div class="info-label">Branch Source</div>
+                      <div class="info-value">${escapeHtml(containers[0]?.sourceBranchSource || 'not exposed')}</div>
+                    </div>
+                    <div class="info-row">
+                      <div class="info-label">Namespace</div>
+                      <div class="info-value"><code>${escapeHtml(workload.namespace || inventory.namespace)}</code></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          let html = '<div class="inventory-shell">' +
+            '<div class="inventory-summary">' +
+              `<div class="summary-item"><div class="summary-label">Namespace</div><div class="summary-value">${escapeHtml(inventory.namespace)}</div></div>` +
+              `<div class="summary-item"><div class="summary-label">Workloads</div><div class="summary-value">${escapeHtml(String(workloads.length))}</div></div>` +
+              `<div class="summary-item"><div class="summary-label">Ready</div><div class="summary-value">${escapeHtml(`${readyWorkloads}/${workloads.length}`)}</div></div>` +
+              `<div class="summary-item"><div class="summary-label">Containers</div><div class="summary-value">${escapeHtml(String(totalContainers))}</div></div>` +
+              `<div class="summary-item"><div class="summary-label">Restarts</div><div class="summary-value">${escapeHtml(String(totalRestarts))}</div></div>` +
+            '</div>' +
+            `<div class="table-note">Updated: ${escapeHtml(new Date(inventory.generatedAt).toLocaleString())}` +
+            `${inventory.releaseFilter?.length ? ` - Helm release filter: <code>${escapeHtml(inventory.releaseFilter.join(', '))}</code>` : ''}</div>` +
+            '<div class="workload-list">' +
+            (workloadCards || '<div class="component-card">No Helm-managed workloads were found for this namespace.</div>') +
+            '</div></div>';
+
           detailsEl.innerHTML = html;
         } catch (e) {
-          detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1;background:#fef2f2;border-color:#fecaca"><div style="color:#dc2626">Failed to load stack versions: ' + e.message + '</div></div>';
+          detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1;background:#fef2f2;border-color:#fecaca"><div style="color:#dc2626">Failed to load Helm image inventory: ' + escapeHtml(e.message) + '</div></div>';
         }
       }
 
@@ -534,7 +800,7 @@
         const cronDot = Array.from(listEl.children).find(el => el.textContent.includes('Health Checks'))?.querySelector('.status-dot');
         if (cronDot) cronDot.style.background = '#8b5cf6';
         
-        const runs = await fetch('/api/cron/runs').then(r => r.json()).catch(() => []);
+        const runs = await fetch(apiPath('/api/cron/runs')).then(r => r.json()).catch(() => []);
         const keys = Object.keys(services);
         const headerCols = ['Check ID', 'Timestamp', ...keys.map(k => services[k].name || k), 'Overall'];
         
@@ -574,7 +840,7 @@
         
         detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1"><div style="text-align:center;padding:20px;color:#94a3b8">Loading health data...</div></div>';
         
-        fetch('/api/health/' + encodeURIComponent(key))
+        fetch(apiPath('/api/health/' + encodeURIComponent(key)))
           .then(r => r.json())
           .then(json => {
             const ok = json.status === 'UP';
@@ -591,8 +857,109 @@
         return String(str).replace(/[&<>]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));
       }
 
+      function escapeAttribute(str) {
+        return escapeHtml(str).replace(/"/g, '&quot;');
+      }
+
+      function formatReplicas(workload) {
+        if (workload.kind === 'DaemonSet') {
+          return `${workload.readyReplicas || 0} ready`;
+        }
+
+        const desired = workload.desiredReplicas ?? 0;
+        const available = workload.availableReplicas ?? workload.readyReplicas ?? 0;
+        return `${available}/${desired} available`;
+      }
+
+      function parseImageHash(imageID) {
+        if (!imageID) return '';
+        const digest = imageID.match(/@(sha256:[a-f0-9]+)/i) || imageID.match(/(?:^|:\/\/)(sha256:[a-f0-9]+)/i);
+        return digest ? digest[1] : imageID;
+      }
+
+      function shortDigest(digest) {
+        if (!digest || digest === 'Pending') return digest || 'Pending';
+        if (digest.startsWith('sha256:') && digest.length > 27) {
+          return digest.slice(0, 27) + '...';
+        }
+        return digest;
+      }
+
+      const ORISO_PACKAGES = {
+        admin: { repo: 'ORISO-Admin', package: 'oriso-admin' },
+        agencyservice: { repo: 'ORISO-AgencyService', package: 'oriso-agencyservice' },
+        'caritas-health-dashboard': { repo: 'ORISO-HealthDashboard', package: 'health-dashboard' },
+        consultingtypeservice: { repo: 'ORISO-ConsultingTypeService', package: 'oriso-consultingtypeservice' },
+        'element-call': { repo: 'ORISO-ElementCall', package: 'element-call' },
+        frontend: { repo: 'ORISO-Frontend', package: 'oriso-frontend' },
+        'health-dashboard': { repo: 'ORISO-HealthDashboard', package: 'health-dashboard' },
+        keycloak: { repo: 'ORISO-Keycloak', package: 'oriso-keycloak' },
+        'livekit-token-service': { repo: 'ORISO-Livekit', package: 'livekit-token-service' },
+        tenantservice: { repo: 'ORISO-TenantService', package: 'oriso-tenantservice' },
+        userservice: { repo: 'ORISO-UserService', package: 'oriso-userservice' }
+      };
+
+      const ORISO_PACKAGE_REPOS = {
+        'health-dashboard': 'ORISO-HealthDashboard',
+        'livekit-token-service': 'ORISO-Livekit',
+        'oriso-admin': 'ORISO-Admin',
+        'oriso-agencyservice': 'ORISO-AgencyService',
+        'oriso-consultingtypeservice': 'ORISO-ConsultingTypeService',
+        'oriso-frontend': 'ORISO-Frontend',
+        'oriso-keycloak': 'ORISO-Keycloak',
+        'oriso-tenantservice': 'ORISO-TenantService',
+        'oriso-userservice': 'ORISO-UserService',
+        'element-call': 'ORISO-ElementCall'
+      };
+
+      function packageLinkForContainer(image, workload = {}, container = {}) {
+        const parsed = parseGhcrImage(image);
+        if (parsed && parsed.owner.toLowerCase() === 'openresilienceinitiative') {
+          const repo = ORISO_PACKAGE_REPOS[parsed.packageName] || inferPackage(workload, container)?.repo;
+          return repo ? githubPackageUrl(repo, parsed.packageName, parsed.tag) : '';
+        }
+
+        const inferred = inferPackage(workload, container);
+        return inferred ? githubPackageUrl(inferred.repo, inferred.package, parsed?.tag || '') : '';
+      }
+
+      function parseGhcrImage(image) {
+        if (!image || image === 'Pending') return '';
+        const reference = String(image)
+          .replace(/^docker-pullable:\/\//, '')
+          .replace(/^docker:\/\//, '');
+        const withoutDigest = reference.split('@')[0];
+        const slashIndex = withoutDigest.lastIndexOf('/');
+        const colonIndex = withoutDigest.lastIndexOf(':');
+        const withoutTag = colonIndex > slashIndex ? withoutDigest.slice(0, colonIndex) : withoutDigest;
+        const parts = withoutTag.split('/').filter(Boolean);
+
+        if (parts[0] === 'ghcr.io' && parts.length >= 3) {
+          const tag = colonIndex > slashIndex ? withoutDigest.slice(colonIndex + 1) : '';
+          const packageName = parts.slice(2).join('/');
+          return { owner: parts[1], packageName, tag };
+        }
+
+        return null;
+      }
+
+      function inferPackage(workload = {}, container = {}) {
+        const keys = [
+          workload.name,
+          container.name,
+          String(workload.name || '').replace(/^oriso-/, ''),
+          String(container.name || '').replace(/^oriso-/, '')
+        ].filter(Boolean);
+        return keys.map(key => ORISO_PACKAGES[key]).find(Boolean) || null;
+      }
+
+      function githubPackageUrl(repo, packageName, tag = '') {
+        const base = `https://github.com/OpenResilienceInitiative/${encodeURIComponent(repo)}/pkgs/container/${encodeURIComponent(packageName)}`;
+        return tag ? `${base}?tag=${encodeURIComponent(tag)}` : base;
+      }
+
       // Initialize
-      fetch('/api/services')
+      fetch(apiPath('/api/services'))
         .then(r => r.json())
         .then(json => { 
           services = json;

@@ -1,26 +1,452 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { checkCatalog, checkService, stackSnapshot } from './health.js';
+import https from 'https';
+
+import { checkCatalog, checkService } from './health.js';
 
 const app = express();
 const PORT = process.env.PORT || 9100;
+const HEALTH_CHECK_TIMEOUT_MS = Number(process.env.HEALTH_CHECK_TIMEOUT_MS || 5000);
 // Working directory where server.js is started; we assume you run from health-dashboard/
 const ROOT = path.resolve();
+const SERVICE_ACCOUNT_DIR = '/var/run/secrets/kubernetes.io/serviceaccount';
+const KUBE_TOKEN_PATH = process.env.KUBERNETES_TOKEN_PATH || path.join(SERVICE_ACCOUNT_DIR, 'token');
+const KUBE_CA_PATH = process.env.KUBERNETES_CA_PATH || path.join(SERVICE_ACCOUNT_DIR, 'ca.crt');
+const KUBE_NAMESPACE_PATH = process.env.KUBERNETES_NAMESPACE_PATH || path.join(SERVICE_ACCOUNT_DIR, 'namespace');
+const KUBE_API_HOST = process.env.KUBERNETES_SERVICE_HOST;
+const KUBE_API_PORT = process.env.KUBERNETES_SERVICE_PORT || '443';
+const HELM_RELEASES = (process.env.ORISO_HELM_RELEASES || process.env.ORISO_HELM_RELEASE || '')
+  .split(',')
+  .map(value => value.trim())
+  .filter(Boolean);
+const GITHUB_ORG = process.env.GITHUB_ORG || 'OpenResilienceInitiative';
+const GITHUB_PACKAGE_TAG = process.env.ORISO_PACKAGE_TAG || process.env.ORISO_ENV || 'pre-dev';
+const GITHUB_PACKAGE_CACHE_MS = Number(process.env.GITHUB_PACKAGE_CACHE_MS || 300000);
+const WORKLOAD_KINDS = [
+  { kind: 'Deployment', resource: 'deployments' },
+  { kind: 'StatefulSet', resource: 'statefulsets' },
+  { kind: 'DaemonSet', resource: 'daemonsets' }
+];
+
+const ORISO_PACKAGES = {
+  admin: { repo: 'ORISO-Admin', package: 'oriso-admin' },
+  agencyservice: { repo: 'ORISO-Kubernetes', package: 'oriso-agencyservice' },
+  'caritas-health-dashboard': { repo: 'ORISO-HealthDashboard', package: 'health-dashboard' },
+  consultingtypeservice: { repo: 'ORISO-ConsultingTypeService', package: 'oriso-consultingtypeservice' },
+  'element-call': { repo: 'ORISO-ElementCall', package: 'element-call' },
+  frontend: { repo: 'ORISO-Frontend', package: 'oriso-frontend' },
+  'health-dashboard': { repo: 'ORISO-HealthDashboard', package: 'health-dashboard' },
+  keycloak: { repo: 'ORISO-Keycloak', package: 'oriso-keycloak' },
+  'livekit-token-service': { repo: 'ORISO-Livekit', package: 'livekit-token-service' },
+  tenantservice: { repo: 'ORISO-TenantService', package: 'oriso-tenantservice' },
+  userservice: { repo: 'ORISO-UserService', package: 'oriso-userservice' }
+};
+
+const ORISO_PACKAGE_REPOS = {
+  'health-dashboard': 'ORISO-HealthDashboard',
+  'livekit-token-service': 'ORISO-Livekit',
+  'oriso-admin': 'ORISO-Admin',
+  'oriso-agencyservice': 'ORISO-Kubernetes',
+  'oriso-consultingtypeservice': 'ORISO-ConsultingTypeService',
+  'oriso-frontend': 'ORISO-Frontend',
+  'oriso-keycloak': 'ORISO-Keycloak',
+  'oriso-tenantservice': 'ORISO-TenantService',
+  'oriso-userservice': 'ORISO-UserService',
+  'element-call': 'ORISO-ElementCall'
+};
+
+const packageVersionCache = new Map();
+
+function readFileIfExists(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
+function currentNamespace() {
+  return process.env.ORISO_HELM_NAMESPACE ||
+    process.env.KUBERNETES_NAMESPACE ||
+    readFileIfExists(KUBE_NAMESPACE_PATH) ||
+    'caritas';
+}
+
+function parseDigest(imageID) {
+  if (!imageID) return '';
+  const digestMatch = imageID.match(/@(sha256:[a-f0-9]+)/i);
+  if (digestMatch) return digestMatch[1];
+
+  const idMatch = imageID.match(/(?:^|:\/\/)(sha256:[a-f0-9]+)/i);
+  if (idMatch) return idMatch[1];
+
+  return imageID;
+}
+
+function imageTag(image) {
+  if (!image || image.includes('@')) return '';
+  const slashIndex = image.lastIndexOf('/');
+  const colonIndex = image.lastIndexOf(':');
+  if (colonIndex <= slashIndex) return '';
+  return image.slice(colonIndex + 1);
+}
+
+function parseGhcrImage(image) {
+  if (!image) return null;
+  const reference = String(image)
+    .replace(/^docker-pullable:\/\//, '')
+    .replace(/^docker:\/\//, '');
+  const withoutDigest = reference.split('@')[0];
+  const slashIndex = withoutDigest.lastIndexOf('/');
+  const colonIndex = withoutDigest.lastIndexOf(':');
+  const withoutTag = colonIndex > slashIndex ? withoutDigest.slice(0, colonIndex) : withoutDigest;
+  const parts = withoutTag.split('/').filter(Boolean);
+
+  if (parts[0] === 'ghcr.io' && parts.length >= 3) {
+    return {
+      owner: parts[1],
+      packageName: parts.slice(2).join('/'),
+      tag: colonIndex > slashIndex ? withoutDigest.slice(colonIndex + 1) : ''
+    };
+  }
+
+  return null;
+}
+
+function inferPackage(workload = {}, container = {}) {
+  const keys = [
+    workload.metadata?.name,
+    container.name,
+    String(workload.metadata?.name || '').replace(/^oriso-/, ''),
+    String(container.name || '').replace(/^oriso-/, '')
+  ].filter(Boolean);
+  return keys.map(key => ORISO_PACKAGES[key]).find(Boolean) || null;
+}
+
+function githubPackageUrl(repo, packageName, versionId = '', tag = '') {
+  const base = `https://github.com/${GITHUB_ORG}/${encodeURIComponent(repo)}/pkgs/container/${encodeURIComponent(packageName)}`;
+  const versionPath = versionId ? `/${encodeURIComponent(versionId)}` : '';
+  const tagQuery = tag ? `?tag=${encodeURIComponent(tag)}` : '';
+  return `${base}${versionPath}${tagQuery}`;
+}
+
+function githubApiRequest(apiPath) {
+  return new Promise((resolve, reject) => {
+    const headers = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'oriso-health-dashboard'
+    };
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const req = https.request({
+      hostname: 'api.github.com',
+      path: apiPath,
+      method: 'GET',
+      headers
+    }, response => {
+      let data = '';
+      response.on('data', chunk => (data += chunk));
+      response.on('end', () => {
+        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`GitHub API returned HTTP ${response.statusCode}: ${data}`));
+          return;
+        }
+
+        try {
+          resolve(JSON.parse(data || '[]'));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.setTimeout(HEALTH_CHECK_TIMEOUT_MS, () => {
+      req.destroy();
+      reject(new Error(`GitHub API timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms`));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function packageVersions(packageName) {
+  const cached = packageVersionCache.get(packageName);
+  if (cached && Date.now() - cached.createdAt < GITHUB_PACKAGE_CACHE_MS) {
+    return cached.versions;
+  }
+
+  const versions = await githubApiRequest(
+    `/orgs/${encodeURIComponent(GITHUB_ORG)}/packages/container/${encodeURIComponent(packageName)}/versions?per_page=100`
+  );
+  packageVersionCache.set(packageName, { createdAt: Date.now(), versions });
+  return versions;
+}
+
+async function resolvePackageUrl({ repo, packageName, digest, tag }) {
+  const fallbackUrl = githubPackageUrl(repo, packageName, '', tag);
+  try {
+    const versions = await packageVersions(packageName);
+    const normalizedDigest = String(digest || '').toLowerCase();
+    const versionByDigest = normalizedDigest
+      ? versions.find(version => String(version.name || '').toLowerCase() === normalizedDigest)
+      : null;
+    const versionByTag = tag
+      ? versions.find(version => (version.metadata?.container?.tags || []).includes(tag))
+      : null;
+    const version = versionByDigest || versionByTag;
+    if (!version?.id) return fallbackUrl;
+
+    const versionTags = version.metadata?.container?.tags || [];
+    const selectedTag = tag && versionTags.includes(tag) ? tag : '';
+    return githubPackageUrl(repo, packageName, String(version.id), selectedTag);
+  } catch {
+    return fallbackUrl;
+  }
+}
+
+function normalizeBranchTag(tag) {
+  if (!tag) return '';
+  if (tag === 'latest') return 'main';
+  if (['main', 'dev', 'pre-dev'].includes(tag)) return tag;
+  if (/^(release|feature|hotfix|bugfix|chore|fix|codex|agent)[.-]/.test(tag)) return tag;
+  return '';
+}
+
+function firstValue(...values) {
+  return values.find(value => typeof value === 'string' && value.trim())?.trim() || '';
+}
+
+function inferSourceBranch(workload, containerImage, runningImage) {
+  const labels = workload.metadata?.labels || {};
+  const annotations = workload.metadata?.annotations || {};
+  const explicitBranch = firstValue(
+    labels['app.kubernetes.io/source-branch'],
+    labels['oriso.org/source-branch'],
+    labels['git.branch'],
+    annotations['app.kubernetes.io/source-branch'],
+    annotations['oriso.org/source-branch'],
+    annotations['git.branch'],
+    annotations['github.com/source-branch']
+  );
+
+  if (explicitBranch) {
+    return { branch: explicitBranch, source: 'workload metadata' };
+  }
+
+  const tagBranch = normalizeBranchTag(imageTag(runningImage) || imageTag(containerImage));
+  if (tagBranch) {
+    return { branch: tagBranch, source: 'image tag' };
+  }
+
+  return { branch: '', source: '' };
+}
+
+function labelsMatchSelector(labels = {}, selector = {}) {
+  return Object.entries(selector).every(([key, value]) => labels[key] === value);
+}
+
+function podMatchesWorkloadSelector(pod, selector = {}) {
+  if (Object.keys(selector).length === 0) return false;
+  return labelsMatchSelector(pod.metadata?.labels || {}, selector);
+}
+
+function helmReleaseAllowed(labels = {}) {
+  if (labels['app.kubernetes.io/managed-by'] !== 'Helm') return false;
+  if (HELM_RELEASES.length === 0) return true;
+  return HELM_RELEASES.includes(labels['app.kubernetes.io/instance']);
+}
+
+function kubeRequest(apiPath) {
+  return new Promise((resolve, reject) => {
+    if (!KUBE_API_HOST) {
+      reject(new Error('Kubernetes API is not available outside the cluster'));
+      return;
+    }
+
+    const token = readFileIfExists(KUBE_TOKEN_PATH);
+    if (!token) {
+      reject(new Error('Kubernetes service account token is not available'));
+      return;
+    }
+
+    const requestOptions = {
+      hostname: KUBE_API_HOST,
+      port: KUBE_API_PORT,
+      path: apiPath,
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`
+      }
+    };
+
+    const ca = readFileIfExists(KUBE_CA_PATH);
+    if (ca) requestOptions.ca = ca;
+
+    const req = https.request(requestOptions, response => {
+      let data = '';
+      response.on('data', chunk => (data += chunk));
+      response.on('end', () => {
+        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`Kubernetes API returned HTTP ${response.statusCode}: ${data}`));
+          return;
+        }
+
+        try {
+          resolve(JSON.parse(data || '{}'));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function containerRowsForWorkload(workload, pods) {
+  const selector = workload.spec?.selector?.matchLabels || {};
+  const podTemplate = workload.spec?.template?.spec || {};
+  const containers = [
+    ...(podTemplate.initContainers || []).map(container => ({ ...container, init: true })),
+    ...(podTemplate.containers || []).map(container => ({ ...container, init: false }))
+  ];
+  const matchedPods = pods.filter(pod => podMatchesWorkloadSelector(pod, selector));
+
+  const rows = await Promise.all(containers.map(async container => {
+    const statuses = matchedPods.flatMap(pod => [
+      ...(pod.status?.initContainerStatuses || []),
+      ...(pod.status?.containerStatuses || [])
+    ]).filter(status => status.name === container.name);
+    const runningStatus = statuses.find(status => status.imageID) || statuses[0] || {};
+    const digest = parseDigest(runningStatus.imageID);
+    const runningImage = runningStatus.image || container.image || '';
+    const { branch, source } = inferSourceBranch(workload, container.image || '', runningImage);
+    const parsedImage = parseGhcrImage(runningImage) || parseGhcrImage(container.image || '');
+    const inferredPackage = inferPackage(workload, container);
+    const packageName = parsedImage?.packageName || inferredPackage?.package || '';
+    const packageRepo = packageName ? (ORISO_PACKAGE_REPOS[packageName] || inferredPackage?.repo || '') : '';
+    const packageTag = parsedImage?.tag || branch || GITHUB_PACKAGE_TAG;
+    const packageUrl = packageName && packageRepo
+      ? await resolvePackageUrl({ repo: packageRepo, packageName, digest, tag: packageTag })
+      : '';
+
+    return {
+      name: container.name,
+      type: container.init ? 'init' : 'app',
+      image: container.image || runningImage,
+      runningImage,
+      imageID: runningStatus.imageID || '',
+      digest,
+      packageName,
+      packageUrl,
+      sourceBranch: branch,
+      sourceBranchSource: source,
+      ready: runningStatus.ready === true,
+      restartCount: runningStatus.restartCount ?? 0
+    };
+  }));
+
+  return rows.filter(container => container.image || container.runningImage || container.imageID);
+}
+
+async function getHelmWorkloads() {
+  const namespace = currentNamespace();
+  const labelSelector = encodeURIComponent('app.kubernetes.io/managed-by=Helm');
+  const [podsResponse, ...workloadResponses] = await Promise.all([
+    kubeRequest(`/api/v1/namespaces/${namespace}/pods`),
+    ...WORKLOAD_KINDS.map(({ resource }) =>
+      kubeRequest(`/apis/apps/v1/namespaces/${namespace}/${resource}?labelSelector=${labelSelector}`)
+    )
+  ]);
+  const pods = podsResponse.items || [];
+
+  const workloadRows = workloadResponses.flatMap((response, index) => {
+    const { kind } = WORKLOAD_KINDS[index];
+    return (response.items || [])
+      .filter(workload => helmReleaseAllowed(workload.metadata?.labels || {}))
+      .map(async workload => {
+        const matchedPods = pods.filter(pod =>
+          podMatchesWorkloadSelector(pod, workload.spec?.selector?.matchLabels || {})
+        );
+
+        return {
+          kind,
+          name: workload.metadata?.name || '',
+          namespace,
+          helmRelease: workload.metadata?.labels?.['app.kubernetes.io/instance'] || '',
+          chart: workload.metadata?.labels?.['helm.sh/chart'] || '',
+          desiredReplicas: workload.spec?.replicas ?? workload.status?.desiredNumberScheduled ?? null,
+          readyReplicas: workload.status?.readyReplicas ?? workload.status?.numberReady ?? 0,
+          availableReplicas: workload.status?.availableReplicas ?? workload.status?.numberAvailable ?? 0,
+          pods: matchedPods.map(pod => ({
+            name: pod.metadata?.name || '',
+            phase: pod.status?.phase || '',
+            ready: (pod.status?.containerStatuses || []).length > 0 &&
+              (pod.status?.containerStatuses || []).every(status => status.ready === true)
+          })),
+          containers: await containerRowsForWorkload(workload, matchedPods)
+        };
+      });
+  });
+  const workloads = await Promise.all(workloadRows);
+
+  workloads.sort((a, b) => `${a.kind}/${a.name}`.localeCompare(`${b.kind}/${b.name}`));
+
+  return {
+    namespace,
+    releaseFilter: HELM_RELEASES,
+    count: workloads.length,
+    generatedAt: new Date().toISOString(),
+    workloads
+  };
+}
 
 // Load config
 const CONFIG_PATH = path.join(ROOT, 'config.json');
 let services = {};
+let quickLinks = [];
+const defaultQuickLinks = [
+  { label: 'Frontend', url: process.env.FRONTEND_URL || '' },
+  { label: 'Admin Panel', url: process.env.ADMIN_URL || '' },
+  { label: 'Keycloak', url: process.env.KEYCLOAK_URL || '' },
+  { label: 'Signoz', url: process.env.SIGNOZ_URL || '' }
+].filter(link => link.url);
+
+function readConfig(rawConfig) {
+  if (rawConfig.services) {
+    return {
+      services: rawConfig.services,
+      quickLinks: Array.isArray(rawConfig.quickLinks) ? rawConfig.quickLinks : defaultQuickLinks
+    };
+  }
+
+  return {
+    services: rawConfig,
+    quickLinks: defaultQuickLinks
+  };
+}
+
 try {
   const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
-  services = JSON.parse(raw);
+  const config = readConfig(JSON.parse(raw));
+  services = config.services;
+  quickLinks = config.quickLinks;
 } catch (err) {
   services = {
-    TenantService: { name: 'TenantService', url: process.env.TENANT_SERVICE_URL || 'http://oriso-platform-tenantservice.caritas.svc.cluster.local:8081/actuator/health' },
-    UserService: { name: 'UserService', url: process.env.USER_SERVICE_URL || 'http://oriso-platform-userservice.caritas.svc.cluster.local:8082/actuator/health' },
-    ConsultingTypeService: { name: 'ConsultingTypeService', url: process.env.CONSULTING_TYPE_SERVICE_URL || 'http://oriso-platform-consultingtypeservice.caritas.svc.cluster.local:8083/actuator/health' },
-    AgencyService: { name: 'AgencyService', url: process.env.AGENCY_SERVICE_URL || 'http://oriso-platform-agencyservice.caritas.svc.cluster.local:8084/actuator/health' }
+    tenantservice: { name: 'TenantService', url: process.env.TENANT_SERVICE_URL || 'http://oriso-tenantservice.caritas.svc.cluster.local:8081/actuator/health' },
+    userservice: { name: 'UserService', url: process.env.USER_SERVICE_URL || 'http://oriso-userservice.caritas.svc.cluster.local:8082/actuator/health' },
+    consultingtypeservice: { name: 'ConsultingTypeService', url: process.env.CONSULTING_TYPE_SERVICE_URL || 'http://oriso-consultingtypeservice.caritas.svc.cluster.local:8083/actuator/health' },
+    agencyservice: { name: 'AgencyService', url: process.env.AGENCY_SERVICE_URL || 'http://oriso-agencyservice.caritas.svc.cluster.local:8084/actuator/health' },
+    liveservice: { name: 'LiveService', url: 'http://localhost:8085/actuator/health' },
+    statisticsservice: { name: 'StatisticsService', url: 'http://localhost:8086/actuator/health' },
+    keycloak: { name: 'Keycloak', url: 'http://localhost:8080/health' },
+    cobproxy: { name: 'Nginx Proxy', url: 'http://localhost:8089/service/tenant/access' }
   };
+  quickLinks = defaultQuickLinks;
 }
 
 app.use(express.static(path.join(ROOT, 'public')));
@@ -30,19 +456,25 @@ app.get('/api/services', (req, res) => {
   res.json(services);
 });
 
+app.get('/api/quick-links', (req, res) => {
+  res.json(quickLinks);
+});
+
 app.get('/api/health/:key', async (req, res) => {
   const key = req.params.key;
   const svc = services[key];
   if (!svc) return res.status(404).json({ error: 'Unknown service' });
 
-  const result = await checkService(svc);
-  latestResults[key] = result;
+  const result = await checkService(svc, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS });
   if (result.up) return res.json(result.body);
-  return res.status(502).json({
+
+  const timedOut = /timed out/i.test(result.error || '');
+  return res.status(timedOut ? 504 : 502).json({
     status: 'DOWN',
     upstreamStatus: result.body?.status || null,
     httpCode: result.code,
     error: result.error,
+    url: svc.url
   });
 });
 
@@ -51,15 +483,14 @@ app.get('/api/health/:key', async (req, res) => {
 // ------------------------------
 let cronRunId = 0;
 const cronRuns = []; // keep last 10
-let latestResults = {};
 
 async function runCronCheck() {
   const timestamp = new Date().toISOString();
-  latestResults = await checkCatalog(services);
+  const readback = await checkCatalog(services, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS });
   const results = Object.fromEntries(
-    Object.entries(latestResults).map(([key, result]) => [key, result.up ? 'UP' : 'DOWN']),
+    Object.entries(readback).map(([key, result]) => [key, result.up ? 'UP' : 'DOWN'])
   );
-  const allUp = Object.values(latestResults).every(result => result.up);
+  const allUp = Object.values(readback).every(result => result.up);
   const entry = {
     id: ++cronRunId,
     timestamp,
@@ -82,17 +513,25 @@ app.get('/api/cron/runs', (req, res) => {
   res.json(cronRuns);
 });
 
+app.get('/api/helm-workloads', async (req, res) => {
+  try {
+    res.json(await getHelmWorkloads());
+  } catch (err) {
+    res.status(503).json({
+      namespace: currentNamespace(),
+      releaseFilter: HELM_RELEASES,
+      count: 0,
+      generatedAt: new Date().toISOString(),
+      workloads: [],
+      error: err.message
+    });
+  }
+});
+
 // API to trigger a run now
 app.post('/api/cron/run', async (req, res) => {
   const entry = await runCronCheck();
   res.json(entry);
-});
-
-// API to get stack versions (up versions) for all backend services
-// Returns hardcoded "up versions" as reported by the services
-app.get('/api/stack-versions', async (req, res) => {
-  latestResults = await checkCatalog(services);
-  res.json(stackSnapshot(services, latestResults));
 });
 
 app.listen(PORT, () => {

@@ -2,18 +2,9 @@ import http from 'node:http';
 import https from 'node:https';
 
 
-const DEFAULT_TIMEOUT_MS = 5_000;
+export const DEFAULT_TIMEOUT_MS = Number(process.env.HEALTH_CHECK_TIMEOUT_MS || 5000);
 const MAX_BODY_BYTES = 1_048_576;
 
-
-function versionFrom(body, ...paths) {
-  for (const path of paths) {
-    let current = body;
-    for (const segment of path) current = current?.[segment];
-    if (typeof current === 'string' && current.trim()) return current;
-  }
-  return null;
-}
 
 
 export function checkService(service, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
@@ -100,29 +91,3 @@ export async function checkCatalog(catalog, options) {
   return Object.fromEntries(entries);
 }
 
-
-export function stackSnapshot(catalog, results) {
-  return Object.fromEntries(
-    Object.entries(catalog).map(([key, service]) => {
-      const result = results[key] || { up: false, code: 0, body: null };
-      const body = result.body || {};
-      return [
-        key,
-        {
-          name: service.name || key,
-          endpoint: service.url,
-          java: versionFrom(body, ['details', 'java', 'version'], ['java', 'version']),
-          springBoot: versionFrom(
-            body,
-            ['details', 'springBoot', 'version'],
-            ['springBoot', 'version'],
-          ),
-          spring: versionFrom(body, ['details', 'spring', 'version'], ['spring', 'version']),
-          status: result.up ? 'available' : 'unavailable',
-          httpCode: result.code,
-          evidence: 'live-health-readback',
-        },
-      ];
-    }),
-  );
-}

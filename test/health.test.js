@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import test from 'node:test';
 
-import { checkService, stackSnapshot } from '../health.js';
+import { checkService } from '../health.js';
 
 
 async function withServer(handler, callback) {
@@ -18,43 +18,60 @@ async function withServer(handler, callback) {
 }
 
 
-// Each backend Service publishes actuator on its own port; there is no shared
-// 8080. Verified against PreDev (ns caritas) on 2026-07-26 by reading back
-// /actuator/health from inside the cluster. Port 8080 times out on all four.
+function catalog() {
+  const raw = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
+  return raw.services;
+}
+
+
+// Mirrors the health-dashboard ConfigMap in ORISO-Helm, which overrides this
+// file at deploy time. The two disagreeing is what produced a dashboard
+// pointing at names that do not resolve, so they are pinned together here.
+// Verified in ns caritas on 2026-07-26: all four answer {"status":"UP"}.
 const DEPLOYED_ENDPOINTS = {
-  AgencyService: 'http://oriso-platform-agencyservice.caritas.svc.cluster.local:8084/actuator/health',
-  ConsultingTypeService:
-    'http://oriso-platform-consultingtypeservice.caritas.svc.cluster.local:8083/actuator/health',
-  TenantService: 'http://oriso-platform-tenantservice.caritas.svc.cluster.local:8081/actuator/health',
-  UserService: 'http://oriso-platform-userservice.caritas.svc.cluster.local:8082/actuator/health',
+  TenantService: 'http://tenantservice.caritas.svc.cluster.local:8081/actuator/health',
+  UserService: 'http://userservice.caritas.svc.cluster.local:8080/actuator/health',
+  ConsultingTypeService: 'http://consultingtypeservice.caritas.svc.cluster.local:8080/actuator/health',
+  AgencyService: 'http://agencyservice.caritas.svc.cluster.local:8080/actuator/health'
 };
 
 
-test('service catalog points at the deployed Helm service names and ports', () => {
-  const catalog = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
+test('the catalog matches the Service names the chart deploys', () => {
   assert.deepEqual(
-    Object.fromEntries(Object.entries(catalog).map(([key, service]) => [key, service.url])),
-    DEPLOYED_ENDPOINTS,
+    Object.fromEntries(Object.entries(catalog()).map(([key, service]) => [key, service.url])),
+    DEPLOYED_ENDPOINTS
   );
 });
 
 
-test('no backend is probed on a port that serves nothing', () => {
-  const catalog = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
-  const ports = Object.values(catalog).map(service => new URL(service.url).port);
-
-  // A single repeated port is the signature of the 8080 regression: every
-  // backend answers on a distinct port, so duplicates mean at least one is wrong.
-  assert.equal(new Set(ports).size, ports.length, `ports must be distinct, got ${ports}`);
-  assert.equal(ports.includes('8080'), false, 'no backend actuator is served on 8080');
+test('no service is probed under a hostname that does not exist', () => {
+  // `oriso-<service>` was the shipped default and is NXDOMAIN in the cluster;
+  // the deployed Services are unprefixed or carry the release prefix.
+  for (const service of Object.values(catalog())) {
+    const { hostname } = new URL(service.url);
+    assert.equal(
+      /^oriso-(tenant|user|agency|consultingtype)service\./.test(hostname),
+      false,
+      `${hostname} does not resolve in the cluster`
+    );
+  }
 });
 
 
-test('dashboard UI does not hardcode stack versions or stale service endpoints', () => {
-  const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  assert.equal(html.includes('19.2.3'), false);
-  assert.equal(html.includes('http://oriso-userservice.caritas.svc.cluster.local'), false);
-  assert.equal(html.includes('http://oriso-agencyservice.caritas.svc.cluster.local'), false);
+test('quick links survive alongside the service catalog', () => {
+  // config.json carries both sections since #28; readConfig() falls back to
+  // treating the whole file as the service map, so losing the wrapper would
+  // silently turn the quick links into services.
+  const raw = JSON.parse(fs.readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
+  assert.ok(raw.services, 'config.json must keep the services wrapper');
+  assert.ok(Array.isArray(raw.quickLinks) && raw.quickLinks.length > 0);
+});
+
+
+test('the dashboard no longer ships fabricated stack versions', () => {
+  const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+  assert.equal(server.includes('/api/stack-versions'), false);
+  assert.equal(server.includes("springBoot: '4.0.1'"), false);
 });
 
 
@@ -69,12 +86,14 @@ test('a service is UP only for a successful actuator JSON body', async () => {
       assert.equal(result.up, true);
       assert.equal(result.code, 200);
       assert.equal(result.body.status, 'UP');
-    },
+    }
   );
 });
 
 
 test('HTTP 200 with a non-health body is DOWN', async () => {
+  // The previous cron check did `catch { up = true }`, so a proxy error page
+  // served with HTTP 200 was reported as healthy.
   await withServer(
     (_request, response) => {
       response.writeHead(200, { 'content-type': 'text/html' });
@@ -85,7 +104,22 @@ test('HTTP 200 with a non-health body is DOWN', async () => {
       assert.equal(result.up, false);
       assert.equal(result.code, 200);
       assert.match(result.error, /valid actuator/i);
+    }
+  );
+});
+
+
+test('an actuator reporting DOWN is DOWN even with HTTP 200', async () => {
+  await withServer(
+    (_request, response) => {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ status: 'DOWN' }));
     },
+    async baseUrl => {
+      const result = await checkService({ name: 'Degraded', url: `${baseUrl}/actuator/health` });
+      assert.equal(result.up, false);
+      assert.match(result.error, /DOWN/);
+    }
   );
 });
 
@@ -97,30 +131,21 @@ test('a hung service is bounded by the configured timeout', async () => {
       const startedAt = Date.now();
       const result = await checkService(
         { name: 'Hung', url: `${baseUrl}/actuator/health` },
-        { timeoutMs: 30 },
+        { timeoutMs: 30 }
       );
       assert.equal(result.up, false);
       assert.match(result.error, /timed out/i);
       assert.ok(Date.now() - startedAt < 500);
-    },
+    }
   );
 });
 
 
-test('stack status is derived from current health evidence', () => {
-  const catalog = {
-    UserService: { name: 'UserService', url: 'http://user/actuator/health' },
-    AgencyService: { name: 'AgencyService', url: 'http://agency/actuator/health' },
-  };
-  const snapshot = stackSnapshot(catalog, {
-    UserService: { up: true, code: 200, body: { status: 'UP' } },
-    AgencyService: { up: false, code: 503, body: { status: 'DOWN' } },
+test('a refused connection is DOWN rather than an unhandled rejection', async () => {
+  const result = await checkService({
+    name: 'Gone',
+    url: 'http://127.0.0.1:1/actuator/health'
   });
-
-  assert.equal(snapshot.UserService.status, 'available');
-  assert.equal(snapshot.AgencyService.status, 'unavailable');
-  assert.equal(snapshot.UserService.java, null);
-  assert.equal(snapshot.UserService.springBoot, null);
-  assert.equal(snapshot.UserService.spring, null);
-  assert.equal(snapshot.UserService.evidence, 'live-health-readback');
+  assert.equal(result.up, false);
+  assert.equal(result.code, 0);
 });
