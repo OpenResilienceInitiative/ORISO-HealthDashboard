@@ -675,10 +675,15 @@
           const workloadCards = workloads.map(workload => {
             const containers = workload.containers && workload.containers.length > 0
               ? workload.containers
-              : [{ name: 'N/A', type: 'app', image: '', runningImage: '', digest: '', imageID: '', ready: false, restartCount: 0, sourceBranch: '', sourceBranchSource: '' }];
+              : [{ name: 'N/A', type: 'app', image: '', runningImage: '', digest: '', imageID: '', ready: false, restartCount: 0, sourceBranch: '', sourceBranchUrl: '', sourceBranchSource: '' }];
             const readyPodCount = (workload.pods || []).filter(pod => pod.ready).length;
             const podCount = (workload.pods || []).length;
             const workloadReady = readyPodCount > 0 && readyPodCount === podCount;
+            const sourceBranch = containers[0]?.sourceBranch || 'Unknown';
+            const sourceBranchUrl = containers[0]?.sourceBranchUrl || '';
+            const sourceBranchHtml = sourceBranchUrl
+              ? `<a href="${escapeAttribute(sourceBranchUrl)}" target="_blank" rel="noopener noreferrer"><code>${escapeHtml(sourceBranch)}</code></a>`
+              : `<code>${escapeHtml(sourceBranch)}</code>`;
             const containerHtml = containers.map(container => {
               const ready = container.ready ? 'Ready' : 'Not ready';
               const digest = container.digest || parseImageHash(container.imageID) || 'Pending';
@@ -753,7 +758,7 @@
                     <div class="info-title">Source</div>
                     <div class="info-row">
                       <div class="info-label">Branch</div>
-                      <div class="info-value"><code>${escapeHtml(containers[0]?.sourceBranch || 'Unknown')}</code></div>
+                      <div class="info-value">${sourceBranchHtml}</div>
                     </div>
                     <div class="info-row">
                       <div class="info-label">Branch Source</div>
