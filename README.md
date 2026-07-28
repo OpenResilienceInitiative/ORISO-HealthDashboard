@@ -154,7 +154,7 @@ Triggers an immediate health check of all services.
 ```
 
 ### GET /api/helm-workloads
-Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured namespace with each container image and runtime image hash/digest from matching pods. When `GITHUB_TOKEN` or `GH_TOKEN` is available, ORISO image rows include `packageUrl` pointing to the exact GitHub package version when the digest or tag can be matched, and `sourceBranch` is populated from exact package version tags such as `pre-dev`, `dev`, or `main`. Without GitHub package metadata, `sourceBranch` falls back to workload labels/annotations or image tags.
+Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured namespace with each container image and runtime image hash/digest from matching pods. When `GITHUB_TOKEN` or `GH_TOKEN` is available, ORISO image rows include `packageUrl` pointing to the exact GitHub package version when the digest or tag can be matched, and `sourceBranch` is populated from exact package version tags such as `pre-dev`, `dev`, or `main`. Without GitHub package metadata, `sourceBranch` falls back to workload labels/annotations or image tags. ORISO release image tags such as `2.0.1` are mapped to service release branches such as `release/userservice-2.0.1`.
 
 **Response:**
 ```json
@@ -188,7 +188,7 @@ Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured
 }
 ```
 
-The dashboard pod needs RBAC to list `pods`, `deployments`, `statefulsets`, and `daemonsets`; see `kubernetes-rbac.yaml`. For exact branch reporting across all services, add one of these labels or annotations to workloads during deployment: `app.kubernetes.io/source-branch`, `oriso.org/source-branch`, or `git.branch`.
+The dashboard pod needs RBAC to list `pods`, `deployments`, `statefulsets`, and `daemonsets`; see `kubernetes-rbac.yaml`. For exact branch reporting across all services, either deploy ORISO images with branch/release tags such as `pre-dev`, `dev`, `main`, or `2.0.1`, or add one of these labels/annotations to workloads during deployment: `app.kubernetes.io/source-branch`, `oriso.org/source-branch`, or `git.branch`.
 
 ## Architecture
 
