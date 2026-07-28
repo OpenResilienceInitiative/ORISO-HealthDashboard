@@ -55,6 +55,32 @@ const ORISO_PACKAGE_REPOS = {
   'element-call': 'ORISO-ElementCall'
 };
 
+const ORISO_SOURCE_REPOS = {
+  'health-dashboard': 'ORISO-HealthDashboard',
+  'livekit-token-service': 'ORISO-Livekit',
+  'oriso-admin': 'ORISO-Admin',
+  'oriso-agencyservice': 'ORISO-AgencyService',
+  'oriso-consultingtypeservice': 'ORISO-ConsultingTypeService',
+  'oriso-frontend': 'ORISO-Frontend',
+  'oriso-keycloak': 'ORISO-Keycloak',
+  'oriso-tenantservice': 'ORISO-TenantService',
+  'oriso-userservice': 'ORISO-UserService',
+  'element-call': 'ORISO-ElementCall'
+};
+
+const ORISO_RELEASE_BRANCH_PREFIXES = {
+  'health-dashboard': 'health-dashboard',
+  'livekit-token-service': 'livekit',
+  'oriso-admin': 'admin',
+  'oriso-agencyservice': 'agencyservice',
+  'oriso-consultingtypeservice': 'consultingtypeservice',
+  'oriso-frontend': 'frontend',
+  'oriso-keycloak': 'keycloak',
+  'oriso-tenantservice': 'tenantservice',
+  'oriso-userservice': 'userservice',
+  'element-call': 'element-call'
+};
+
 const packageVersionCache = new Map();
 
 function readFileIfExists(filePath) {
@@ -225,10 +251,20 @@ async function resolvePackageVersion({ repo, packageName, digest, tag }) {
   }
 }
 
-function normalizeBranchTag(tag) {
+function releaseBranchFromTag(tag, packageName) {
+  const match = String(tag || '').match(/^v?(\d+\.\d+\.\d+)$/);
+  if (!match || !packageName) return '';
+  const releasePrefix = ORISO_RELEASE_BRANCH_PREFIXES[packageName] ||
+    String(packageName).replace(/^oriso-/, '');
+  return releasePrefix ? `release/${releasePrefix}-${match[1]}` : '';
+}
+
+function normalizeBranchTag(tag, packageName = '') {
   if (!tag) return '';
   if (tag === 'latest') return 'main';
   if (['main', 'dev', 'pre-dev'].includes(tag)) return tag;
+  const releaseBranch = releaseBranchFromTag(tag, packageName);
+  if (releaseBranch) return releaseBranch;
   if (/^(release|feature|hotfix|bugfix|chore|fix|codex|agent)[.-]/.test(tag)) return tag;
   return '';
 }
@@ -237,7 +273,7 @@ function firstValue(...values) {
   return values.find(value => typeof value === 'string' && value.trim())?.trim() || '';
 }
 
-function inferSourceBranch(workload, containerImage, runningImage) {
+function inferSourceBranch(workload, containerImage, runningImage, packageName = '') {
   const labels = workload.metadata?.labels || {};
   const annotations = workload.metadata?.annotations || {};
   const explicitBranch = firstValue(
@@ -254,7 +290,7 @@ function inferSourceBranch(workload, containerImage, runningImage) {
     return { branch: explicitBranch, source: 'workload metadata' };
   }
 
-  const tagBranch = normalizeBranchTag(imageTag(runningImage) || imageTag(containerImage));
+  const tagBranch = normalizeBranchTag(imageTag(runningImage) || imageTag(containerImage), packageName);
   if (tagBranch) {
     return { branch: tagBranch, source: 'image tag' };
   }
@@ -343,11 +379,12 @@ async function containerRowsForWorkload(workload, pods) {
     const runningStatus = statuses.find(status => status.imageID) || statuses[0] || {};
     const digest = parseDigest(runningStatus.imageID);
     const runningImage = runningStatus.image || container.image || '';
-    const { branch, source } = inferSourceBranch(workload, container.image || '', runningImage);
     const parsedImage = parseGhcrImage(runningImage) || parseGhcrImage(container.image || '');
     const inferredPackage = inferPackage(workload, container);
     const packageName = parsedImage?.packageName || inferredPackage?.package || '';
     const packageRepo = packageName ? (ORISO_PACKAGE_REPOS[packageName] || inferredPackage?.repo || '') : '';
+    const sourceRepo = packageName ? (ORISO_SOURCE_REPOS[packageName] || packageRepo) : '';
+    const { branch, source } = inferSourceBranch(workload, container.image || '', runningImage, packageName);
     const packageTag = parsedImage?.tag || branch || GITHUB_PACKAGE_TAG;
     const packageVersion = packageName && packageRepo
       ? await resolvePackageVersion({ repo: packageRepo, packageName, digest, tag: packageTag })
@@ -357,7 +394,7 @@ async function containerRowsForWorkload(workload, pods) {
       ? `GitHub package ${packageVersion.matchedBy || 'version'} tag`
       : source;
     const sourceBranchUrl = sourceBranch && packageRepo
-      ? githubBranchUrl(packageRepo, sourceBranch)
+      ? githubBranchUrl(sourceRepo || packageRepo, sourceBranch)
       : '';
 
     return {
