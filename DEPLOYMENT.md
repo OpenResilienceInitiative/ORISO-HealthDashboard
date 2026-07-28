@@ -153,6 +153,7 @@ kubectl edit deployment health-dashboard -n caritas
 - [ ] All services show status (UP/DOWN)
 - [ ] Helm Images shows every Helm-managed workload with branch, running image, and image hash
 - [ ] ORISO image hashes link to exact GitHub package versions when `GITHUB_TOKEN` is configured
+- [ ] ORISO source branch is populated from exact GitHub package tags such as `pre-dev`, `dev`, or `main`
 - [ ] Health checks running every 60 seconds
 
 ## 🚨 Troubleshooting

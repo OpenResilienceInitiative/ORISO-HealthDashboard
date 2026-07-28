@@ -154,7 +154,7 @@ Triggers an immediate health check of all services.
 ```
 
 ### GET /api/helm-workloads
-Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured namespace with each container image and runtime image hash/digest from matching pods. `sourceBranch` is read from workload labels/annotations when present, or inferred from image tags such as `main`, `dev`, `pre-dev`, and `latest`. When `GITHUB_TOKEN` or `GH_TOKEN` is available, ORISO image rows also include `packageUrl` pointing to the exact GitHub package version when the digest or tag can be matched.
+Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured namespace with each container image and runtime image hash/digest from matching pods. When `GITHUB_TOKEN` or `GH_TOKEN` is available, ORISO image rows include `packageUrl` pointing to the exact GitHub package version when the digest or tag can be matched, and `sourceBranch` is populated from exact package version tags such as `pre-dev`, `dev`, or `main`. Without GitHub package metadata, `sourceBranch` falls back to workload labels/annotations or image tags.
 
 **Response:**
 ```json
@@ -177,8 +177,10 @@ Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured
           "imageID": "containerd://sha256:abc123",
           "packageName": "oriso-userservice",
           "packageUrl": "https://github.com/OpenResilienceInitiative/ORISO-UserService/pkgs/container/oriso-userservice/123456789?tag=pre-dev",
-          "sourceBranch": "dev",
-          "sourceBranchSource": "image tag"
+          "packageTags": ["sha-abcdef1", "pre-dev"],
+          "sourceBranch": "pre-dev",
+          "sourceBranchUrl": "https://github.com/OpenResilienceInitiative/ORISO-UserService/tree/pre-dev",
+          "sourceBranchSource": "GitHub package digest tag"
         }
       ]
     }
