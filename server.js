@@ -130,6 +130,11 @@ function githubPackageUrl(repo, packageName, versionId = '', tag = '') {
   return `${base}${versionPath}${tagQuery}`;
 }
 
+function githubBranchUrl(repo, branch) {
+  if (!repo || !branch) return '';
+  return `https://github.com/${GITHUB_ORG}/${encodeURIComponent(repo)}/tree/${encodeURIComponent(branch)}`;
+}
+
 function githubApiRequest(apiPath) {
   return new Promise((resolve, reject) => {
     const headers = {
@@ -183,7 +188,15 @@ async function packageVersions(packageName) {
   return versions;
 }
 
-async function resolvePackageUrl({ repo, packageName, digest, tag }) {
+function branchFromPackageTags(tags = [], preferredTag = '') {
+  const branchTags = ['pre-dev', 'dev', 'main'];
+  if (preferredTag && branchTags.includes(preferredTag) && tags.includes(preferredTag)) {
+    return preferredTag;
+  }
+  return branchTags.find(branch => tags.includes(branch)) || '';
+}
+
+async function resolvePackageVersion({ repo, packageName, digest, tag }) {
   const fallbackUrl = githubPackageUrl(repo, packageName, '', tag);
   try {
     const versions = await packageVersions(packageName);
@@ -195,13 +208,20 @@ async function resolvePackageUrl({ repo, packageName, digest, tag }) {
       ? versions.find(version => (version.metadata?.container?.tags || []).includes(tag))
       : null;
     const version = versionByDigest || versionByTag;
-    if (!version?.id) return fallbackUrl;
+    if (!version?.id) {
+      return { url: fallbackUrl, tags: [], branch: '', matchedBy: '' };
+    }
 
     const versionTags = version.metadata?.container?.tags || [];
     const selectedTag = tag && versionTags.includes(tag) ? tag : '';
-    return githubPackageUrl(repo, packageName, String(version.id), selectedTag);
+    return {
+      url: githubPackageUrl(repo, packageName, String(version.id), selectedTag),
+      tags: versionTags,
+      branch: branchFromPackageTags(versionTags, selectedTag),
+      matchedBy: versionByDigest ? 'digest' : 'tag'
+    };
   } catch {
-    return fallbackUrl;
+    return { url: fallbackUrl, tags: [], branch: '', matchedBy: '' };
   }
 }
 
@@ -329,8 +349,15 @@ async function containerRowsForWorkload(workload, pods) {
     const packageName = parsedImage?.packageName || inferredPackage?.package || '';
     const packageRepo = packageName ? (ORISO_PACKAGE_REPOS[packageName] || inferredPackage?.repo || '') : '';
     const packageTag = parsedImage?.tag || branch || GITHUB_PACKAGE_TAG;
-    const packageUrl = packageName && packageRepo
-      ? await resolvePackageUrl({ repo: packageRepo, packageName, digest, tag: packageTag })
+    const packageVersion = packageName && packageRepo
+      ? await resolvePackageVersion({ repo: packageRepo, packageName, digest, tag: packageTag })
+      : { url: '', tags: [], branch: '', matchedBy: '' };
+    const sourceBranch = packageVersion.branch || branch;
+    const sourceBranchSource = packageVersion.branch
+      ? `GitHub package ${packageVersion.matchedBy || 'version'} tag`
+      : source;
+    const sourceBranchUrl = sourceBranch && packageRepo
+      ? githubBranchUrl(packageRepo, sourceBranch)
       : '';
 
     return {
@@ -341,9 +368,11 @@ async function containerRowsForWorkload(workload, pods) {
       imageID: runningStatus.imageID || '',
       digest,
       packageName,
-      packageUrl,
-      sourceBranch: branch,
-      sourceBranchSource: source,
+      packageUrl: packageVersion.url,
+      packageTags: packageVersion.tags,
+      sourceBranch,
+      sourceBranchUrl,
+      sourceBranchSource,
       ready: runningStatus.ready === true,
       restartCount: runningStatus.restartCount ?? 0
     };
