@@ -1,8 +1,9 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import http from 'http';
 import https from 'https';
+
+import { checkCatalog, checkService } from './health.js';
 
 const app = express();
 const PORT = process.env.PORT || 9100;
@@ -525,49 +526,22 @@ app.get('/api/quick-links', (req, res) => {
   res.json(quickLinks);
 });
 
-app.get('/api/health/:key', (req, res) => {
+app.get('/api/health/:key', async (req, res) => {
   const key = req.params.key;
   const svc = services[key];
   if (!svc) return res.status(404).json({ error: 'Unknown service' });
 
-  try {
-    let completed = false;
-    const sendFailure = (status, error) => {
-      if (completed) return;
-      completed = true;
-      res.status(status).json({ status: 'DOWN', error, url: svc.url });
-    };
-    const url = new URL(svc.url);
-    const reqOpts = {
-      hostname: url.hostname,
-      port: url.port || (url.protocol === 'https:' ? 443 : 80),
-      path: url.pathname + (url.search || ''),
-      method: 'GET',
-      headers: { 'Accept': 'application/json' }
-    };
+  const result = await checkService(svc, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS });
+  if (result.up) return res.json(result.body);
 
-    const h = url.protocol === 'https:' ? https : http;
-    const proxy = h.request(reqOpts, r => {
-      let data = '';
-      r.on('data', chunk => (data += chunk));
-      r.on('end', () => {
-        if (completed) return;
-        completed = true;
-        const status = r.statusCode || 500;
-        res.status(status).type(r.headers['content-type'] || 'application/json').send(data);
-      });
-    });
-    proxy.setTimeout(HEALTH_CHECK_TIMEOUT_MS, () => {
-      proxy.destroy();
-      sendFailure(504, `Health check timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms`);
-    });
-    proxy.on('error', e => {
-      sendFailure(502, e.message);
-    });
-    proxy.end();
-  } catch (e) {
-    res.status(500).json({ status: 'DOWN', error: e.message });
-  }
+  const timedOut = /timed out/i.test(result.error || '');
+  return res.status(timedOut ? 504 : 502).json({
+    status: 'DOWN',
+    upstreamStatus: result.body?.status || null,
+    httpCode: result.code,
+    error: result.error,
+    url: svc.url
+  });
 });
 
 // ------------------------------
@@ -576,54 +550,13 @@ app.get('/api/health/:key', (req, res) => {
 let cronRunId = 0;
 const cronRuns = []; // keep last 10
 
-function requestHealth(urlStr) {
-  return new Promise(resolve => {
-    try {
-      const url = new URL(urlStr);
-      const transport = url.protocol === 'https:' ? https : http;
-      const req = transport.request({
-        hostname: url.hostname,
-        port: url.port || (url.protocol === 'https:' ? 443 : 80),
-        path: url.pathname + (url.search || ''),
-        method: 'GET',
-        headers: { 'Accept': 'application/json' }
-      }, r => {
-        let data = '';
-        r.on('data', c => (data += c));
-        r.on('end', () => {
-          let up = false;
-          if (r.statusCode && r.statusCode >= 200 && r.statusCode < 300) {
-            try {
-              const json = JSON.parse(data || '{}');
-              up = (json.status === 'UP');
-            } catch { up = true; }
-          }
-          resolve({ code: r.statusCode || 0, up });
-        });
-      });
-      req.setTimeout(HEALTH_CHECK_TIMEOUT_MS, () => {
-        req.destroy();
-        resolve({ code: 504, up: false });
-      });
-      req.on('error', () => resolve({ code: 0, up: false }));
-      req.end();
-    } catch {
-      resolve({ code: 0, up: false });
-    }
-  });
-}
-
 async function runCronCheck() {
   const timestamp = new Date().toISOString();
-  const keys = Object.keys(services);
-  const results = {};
-  const checks = await Promise.all(keys.map(async key => {
-    const svc = services[key];
-    const r = await requestHealth(svc.url);
-    results[key] = r.up ? 'UP' : 'DOWN';
-    return r.up;
-  }));
-  const allUp = checks.every(Boolean);
+  const readback = await checkCatalog(services, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS });
+  const results = Object.fromEntries(
+    Object.entries(readback).map(([key, result]) => [key, result.up ? 'UP' : 'DOWN'])
+  );
+  const allUp = Object.values(readback).every(result => result.up);
   const entry = {
     id: ++cronRunId,
     timestamp,
@@ -665,44 +598,6 @@ app.get('/api/helm-workloads', async (req, res) => {
 app.post('/api/cron/run', async (req, res) => {
   const entry = await runCronCheck();
   res.json(entry);
-});
-
-// API to get stack versions (up versions) for all backend services
-// Returns hardcoded "up versions" as reported by the services
-app.get('/api/stack-versions', (req, res) => {
-  // Hardcoded "up versions" - these are the reported versions from the services
-  const versions = {
-    'UserService': {
-      name: 'UserService',
-      java: '21',
-      springBoot: '4.0.1',
-      spring: '6.2.0',
-      status: 'available'
-    },
-    'AgencyService': {
-      name: 'AgencyService',
-      java: '21',
-      springBoot: '4.0.1',
-      spring: '6.2.0',
-      status: 'available'
-    },
-    'ConsultingTypeService': {
-      name: 'ConsultingTypeService',
-      java: '21',
-      springBoot: '4.0.1',
-      spring: '6.2.0',
-      status: 'available'
-    },
-    'TenantService': {
-      name: 'TenantService',
-      java: '21',
-      springBoot: '4.0.1',
-      spring: '6.2.0',
-      status: 'available'
-    }
-  };
-
-  res.json(versions);
 });
 
 app.listen(PORT, () => {
