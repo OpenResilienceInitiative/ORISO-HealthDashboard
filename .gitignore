@@ -1,0 +1,7 @@
+# Installed dependencies — restored from package-lock.json.
+node_modules/
+
+# Python bytecode and editor scratch files.
+__pycache__/
+*.py[cod]
+.DS_Store
