@@ -13,7 +13,14 @@ docker build -t caritas-health-dashboard:latest .
 sudo k3s ctr images import <(docker save caritas-health-dashboard:latest)
 ```
 
-### Step 3: Create Kubernetes Deployment
+### Step 3: Create Kubernetes RBAC
+The Helm image inventory reads Deployments, StatefulSets, DaemonSets, and Pods in the dashboard namespace so it can show runtime image digests from pod status. Source branch is shown when exposed by workload metadata, or inferred from image tags such as `main`, `dev`, `pre-dev`, and `latest`.
+
+```bash
+kubectl apply -f kubernetes-rbac.yaml
+```
+
+### Step 4: Create Kubernetes Deployment
 Create `kubernetes-deployment.yaml`:
 
 ```yaml
@@ -34,6 +41,7 @@ spec:
       labels:
         app: health-dashboard
     spec:
+      serviceAccountName: health-dashboard
       hostNetwork: true
       containers:
       - name: health-dashboard
@@ -44,17 +52,23 @@ spec:
           value: "9001"
         - name: NODE_ENV
           value: "production"
-        # Optional: configure dashboard quick links shown on the home page
-        - name: FRONTEND_URL
-          value: "https://your-frontend.example.com"
-        - name: ADMIN_URL
-          value: "https://your-admin.example.com"
-        - name: KEYCLOAK_URL
-          value: "https://your-keycloak.example.com"
-        - name: STATUS_URL
-          value: "https://your-status-page.example.com"
-        - name: SIGNOZ_URL
-          value: "https://your-signoz.example.com"
+        - name: ORISO_HELM_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        # Optional: comma-separated Helm release names to show. Leave unset to
+        # show every Helm-managed workload in the namespace.
+        # - name: ORISO_HELM_RELEASES
+        #   value: "oriso"
+        # Optional: enables exact GitHub package-version links for ORISO images.
+        # Without this, the dashboard falls back to package-level links.
+        # - name: GITHUB_TOKEN
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: health-dashboard-github
+        #       key: token
+        # - name: ORISO_PACKAGE_TAG
+        #   value: "pre-dev"
         ports:
         - containerPort: 9001
           name: http
@@ -81,12 +95,12 @@ spec:
   type: ClusterIP
 ```
 
-### Step 4: Deploy
+### Step 5: Deploy
 ```bash
 kubectl apply -f kubernetes-deployment.yaml
 ```
 
-### Step 5: Verify
+### Step 6: Verify
 ```bash
 # Check pod is running
 kubectl get pods -n caritas | grep health-dashboard
@@ -96,9 +110,12 @@ kubectl logs -n caritas -l app=health-dashboard
 
 # Test access
 curl http://localhost:9001
+
+# Test Helm workload inventory
+curl http://localhost:9001/api/helm-workloads
 ```
 
-### Step 6: Access Dashboard
+### Step 7: Access Dashboard
 Open in browser: **http://91.99.219.182:9001**
 
 ## 🔧 Configuration
@@ -134,6 +151,9 @@ kubectl edit deployment health-dashboard -n caritas
 - [ ] Service is accessible on port 9001
 - [ ] Dashboard loads in browser
 - [ ] All services show status (UP/DOWN)
+- [ ] Helm Images shows every Helm-managed workload with branch, running image, and image hash
+- [ ] ORISO image hashes link to exact GitHub package versions when `GITHUB_TOKEN` is configured
+- [ ] ORISO source branch is populated from exact GitHub package tags such as `pre-dev`, `dev`, or `main`
 - [ ] Health checks running every 60 seconds
 
 ## 🚨 Troubleshooting
@@ -148,6 +168,13 @@ kubectl logs -n caritas -l app=health-dashboard
 1. Check config.json exists in Docker image
 2. Verify service URLs are correct
 3. Check logs for errors
+
+### Helm Images Shows an API Error
+1. Apply `kubernetes-rbac.yaml`
+2. Confirm the Deployment uses `serviceAccountName: health-dashboard`
+3. Verify the dashboard namespace matches `ORISO_HELM_NAMESPACE`
+4. If `ORISO_HELM_RELEASES` is set, confirm it matches the actual Helm release name
+5. If exact package-version links are missing, configure `GITHUB_TOKEN` or `GH_TOKEN`; GitHub requires authentication to list package versions
 
 ### Services Show as DOWN
 1. Verify services are actually running: `kubectl get pods -n caritas`
@@ -182,4 +209,3 @@ kubectl delete pod -n caritas -l app=health-dashboard
 **Default Port:** 9001  
 **Access URL:** http://91.99.219.182:9001  
 **Namespace:** caritas
-

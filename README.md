@@ -7,6 +7,7 @@ Real-time health monitoring dashboard for all Online Beratung microservices. Pro
 - ✅ **Real-time Monitoring** - Checks services every 60 seconds
 - ✅ **Beautiful UI** - Modern dark-themed dashboard
 - ✅ **Service Details** - View detailed health information for each service
+- ✅ **Helm Image Inventory** - Shows Helm-deployed workloads with running images, source branch when exposed, and image hashes
 - ✅ **Historical Data** - Tracks last 10 health check runs
 - ✅ **Manual Refresh** - Trigger health checks on demand
 - ✅ **API Proxy** - Proxies health check requests to avoid CORS issues
@@ -64,12 +65,20 @@ Edit `config.json` to configure which services to monitor:
 # Port (default: 9100)
 PORT=9100
 
-# Optional quick-link targets for the dashboard home page
-FRONTEND_URL=https://your-frontend.example.com
-ADMIN_URL=https://your-admin.example.com
-KEYCLOAK_URL=https://your-keycloak.example.com
-STATUS_URL=https://your-status-page.example.com
-SIGNOZ_URL=https://your-signoz.example.com
+# Namespace to inspect for Helm workloads. Defaults to the pod namespace in Kubernetes.
+ORISO_HELM_NAMESPACE=caritas
+
+# Optional comma-separated Helm release filter. Leave unset to show every
+# Helm-managed workload in the namespace.
+ORISO_HELM_RELEASES=oriso
+
+# Optional GitHub token used to resolve exact package-version URLs for image
+# digests, e.g. /pkgs/container/oriso-agencyservice/1070196056?tag=pre-dev.
+# Without this token the dashboard links to the package page only.
+GITHUB_TOKEN=github_pat_or_classic_token_with_package_read_access
+
+# Package tag to prefer when the running pod only exposes sha256 image text.
+ORISO_PACKAGE_TAG=pre-dev
 ```
 
 ## API Endpoints
@@ -144,6 +153,43 @@ Triggers an immediate health check of all services.
 }
 ```
 
+### GET /api/helm-workloads
+Returns Helm-managed Deployments, StatefulSets, and DaemonSets in the configured namespace with each container image and runtime image hash/digest from matching pods. When `GITHUB_TOKEN` or `GH_TOKEN` is available, ORISO image rows include `packageUrl` pointing to the exact GitHub package version when the digest or tag can be matched, and `sourceBranch` is populated from exact package version tags such as `pre-dev`, `dev`, or `main`. Without GitHub package metadata, `sourceBranch` falls back to workload labels/annotations or image tags. ORISO release image tags such as `2.0.1` are mapped to service release branches such as `release/userservice-2.0.1`.
+
+**Response:**
+```json
+{
+  "namespace": "caritas",
+  "releaseFilter": ["oriso"],
+  "count": 1,
+  "generatedAt": "2026-07-25T12:00:00.000Z",
+  "workloads": [
+    {
+      "kind": "Deployment",
+      "name": "oriso-userservice",
+      "helmRelease": "oriso",
+      "containers": [
+        {
+          "name": "userservice",
+          "image": "ghcr.io/openresilienceinitiative/oriso-userservice:rebuild",
+          "runningImage": "ghcr.io/openresilienceinitiative/oriso-userservice:rebuild",
+          "digest": "sha256:abc123",
+          "imageID": "containerd://sha256:abc123",
+          "packageName": "oriso-userservice",
+          "packageUrl": "https://github.com/OpenResilienceInitiative/ORISO-UserService/pkgs/container/oriso-userservice/123456789?tag=pre-dev",
+          "packageTags": ["sha-abcdef1", "pre-dev"],
+          "sourceBranch": "pre-dev",
+          "sourceBranchUrl": "https://github.com/OpenResilienceInitiative/ORISO-UserService/tree/pre-dev",
+          "sourceBranchSource": "GitHub package digest tag"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The dashboard pod needs RBAC to list `pods`, `deployments`, `statefulsets`, and `daemonsets`; see `kubernetes-rbac.yaml`. For exact branch reporting across all services, either deploy ORISO images with branch/release tags such as `pre-dev`, `dev`, `main`, or `2.0.1`, or add one of these labels/annotations to workloads during deployment: `app.kubernetes.io/source-branch`, `oriso.org/source-branch`, or `git.branch`.
+
 ## Architecture
 
 ### Tech Stack
@@ -190,17 +236,6 @@ spec:
         env:
         - name: PORT
           value: "9001"
-        # Optional: configure dashboard quick links
-        - name: FRONTEND_URL
-          value: "https://your-frontend.example.com"
-        - name: ADMIN_URL
-          value: "https://your-admin.example.com"
-        - name: KEYCLOAK_URL
-          value: "https://your-keycloak.example.com"
-        - name: STATUS_URL
-          value: "https://your-status-page.example.com"
-        - name: SIGNOZ_URL
-          value: "https://your-signoz.example.com"
         ports:
         - containerPort: 9001
           name: http
@@ -393,4 +428,3 @@ Services must return JSON with `status` field:
 **Status:** Production Ready ✅  
 **Port:** 9001  
 **Access:** http://91.99.219.182:9001/
-
