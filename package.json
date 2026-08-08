@@ -6,10 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "NODE_ENV=development node server.js"
+    "dev": "NODE_ENV=development node server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "express": "^4.19.2"
   }
 }
-

@@ -20,4 +20,10 @@ runs:
 
   - name: Validate server entrypoint syntax
     shell: bash
-    run: node --check server.js
+    run: |
+      node --check server.js
+      node --check health.js
+
+  - name: Run unit tests
+    shell: bash
+    run: npm test
