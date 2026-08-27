@@ -1,0 +1,334 @@
+{
+  "version": "1.0.0",
+  "gitCommitHash": "60d273e455739a96f73317a28893eb4952512ad6",
+  "generatedAt": "2026-08-26T07:28:30.995Z",
+  "files": {
+    "health.js": {
+      "filePath": "health.js",
+      "contentHash": "7660f9840253c474375ca0140a968b4748d4bc46e042f529cb2fa71d363794a5",
+      "functions": [
+        {
+          "name": "checkService",
+          "params": [
+            "service"
+          ],
+          "exported": true,
+          "lineCount": 90
+        },
+        {
+          "name": "checkCatalog",
+          "params": [
+            "catalog",
+            "options"
+          ],
+          "exported": true,
+          "lineCount": 9
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "node:http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "node:https",
+          "specifiers": [
+            "https"
+          ]
+        }
+      ],
+      "exports": [
+        "DEFAULT_TIMEOUT_MS",
+        "checkService",
+        "checkCatalog"
+      ],
+      "totalLines": 112,
+      "hasStructuralAnalysis": true
+    },
+    "server.js": {
+      "filePath": "server.js",
+      "contentHash": "93119f58976a8ce310312b97af6630d6f7a464dc705f84dcadd9d9cf2ae2bc06",
+      "functions": [
+        {
+          "name": "readFileIfExists",
+          "params": [
+            "filePath"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "currentNamespace",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "parseDigest",
+          "params": [
+            "imageID"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "imageTag",
+          "params": [
+            "image"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "parseGhcrImage",
+          "params": [
+            "image"
+          ],
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "inferPackage",
+          "params": [],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "githubPackageUrl",
+          "params": [
+            "repo",
+            "packageName"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "githubBranchUrl",
+          "params": [
+            "repo",
+            "branch"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "githubApiRequest",
+          "params": [
+            "apiPath"
+          ],
+          "exported": false,
+          "lineCount": 39
+        },
+        {
+          "name": "packageVersions",
+          "params": [
+            "packageName"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "branchFromPackageTags",
+          "params": [],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "resolvePackageVersion",
+          "params": [],
+          "exported": false,
+          "lineCount": 28
+        },
+        {
+          "name": "releaseBranchFromTag",
+          "params": [
+            "tag",
+            "packageName"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "normalizeBranchTag",
+          "params": [
+            "tag"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "firstValue",
+          "params": [
+            "...values"
+          ],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "inferSourceBranch",
+          "params": [
+            "workload",
+            "containerImage",
+            "runningImage"
+          ],
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "labelsMatchSelector",
+          "params": [],
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "podMatchesWorkloadSelector",
+          "params": [
+            "pod"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "helmReleaseAllowed",
+          "params": [],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "kubeRequest",
+          "params": [
+            "apiPath"
+          ],
+          "exported": false,
+          "lineCount": 48
+        },
+        {
+          "name": "containerRowsForWorkload",
+          "params": [
+            "workload",
+            "pods"
+          ],
+          "exported": false,
+          "lineCount": 55
+        },
+        {
+          "name": "getHelmWorkloads",
+          "params": [],
+          "exported": false,
+          "lineCount": 51
+        },
+        {
+          "name": "readConfig",
+          "params": [
+            "rawConfig"
+          ],
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "runCronCheck",
+          "params": [],
+          "exported": false,
+          "lineCount": 17
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "express",
+          "specifiers": [
+            "express"
+          ]
+        },
+        {
+          "source": "fs",
+          "specifiers": [
+            "fs"
+          ]
+        },
+        {
+          "source": "path",
+          "specifiers": [
+            "path"
+          ]
+        },
+        {
+          "source": "https",
+          "specifiers": [
+            "https"
+          ]
+        },
+        {
+          "source": "./health.js",
+          "specifiers": [
+            "checkCatalog",
+            "checkService"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 606,
+      "hasStructuralAnalysis": true
+    },
+    "test/health.test.js": {
+      "filePath": "test/health.test.js",
+      "contentHash": "7e08863bc83f06e459f695c8d7feb8e83d8b11b958702bb6cfd0fd27939e16ce",
+      "functions": [
+        {
+          "name": "withServer",
+          "params": [
+            "handler",
+            "callback"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "catalog",
+          "params": [],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "node:assert/strict",
+          "specifiers": [
+            "assert"
+          ]
+        },
+        {
+          "source": "node:fs",
+          "specifiers": [
+            "fs"
+          ]
+        },
+        {
+          "source": "node:http",
+          "specifiers": [
+            "http"
+          ]
+        },
+        {
+          "source": "node:test",
+          "specifiers": [
+            "test"
+          ]
+        },
+        {
+          "source": "../health.js",
+          "specifiers": [
+            "checkService"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 172,
+      "hasStructuralAnalysis": true
+    }
+  }
+}
