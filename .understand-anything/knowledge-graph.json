@@ -1,0 +1,991 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "ORISO-HealthDashboard",
+    "languages": [
+      "dockerfile",
+      "javascript",
+      "json",
+      "markdown",
+      "yaml"
+    ],
+    "frameworks": [],
+    "description": "",
+    "analyzedAt": "2026-08-26T07:28:30.951Z",
+    "gitCommitHash": "60d273e455739a96f73317a28893eb4952512ad6"
+  },
+  "nodes": [
+    {
+      "id": "document:AGENTS.md",
+      "type": "document",
+      "name": "AGENTS.md",
+      "filePath": "AGENTS.md",
+      "summary": "document file with 2 sections (25 lines).",
+      "tags": [
+        "document",
+        "root"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:DEPLOYMENT.md",
+      "type": "document",
+      "name": "DEPLOYMENT.md",
+      "filePath": "DEPLOYMENT.md",
+      "summary": "document file with 20 sections (212 lines).",
+      "tags": [
+        "document",
+        "root"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:Dockerfile",
+      "type": "config",
+      "name": "Dockerfile",
+      "filePath": "Dockerfile",
+      "summary": "config file (13 lines).",
+      "tags": [
+        "config",
+        "root"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "service:Dockerfile:node",
+      "type": "service",
+      "name": "node",
+      "filePath": "Dockerfile",
+      "summary": "Service node (image: node:18-alpine)",
+      "tags": [],
+      "complexity": "simple"
+    },
+    {
+      "id": "step:Dockerfile:FROM node:18-alpine",
+      "type": "pipeline",
+      "name": "FROM node:18-alpine",
+      "filePath": "Dockerfile",
+      "lineRange": [
+        1,
+        1
+      ],
+      "summary": "Step: FROM node:18-alpine",
+      "tags": [],
+      "complexity": "simple"
+    },
+    {
+      "id": "step:Dockerfile:WORKDIR /app",
+      "type": "pipeline",
+      "name": "WORKDIR /app",
+      "filePath": "Dockerfile",
+      "lineRange": [
+        3,
+        3
+      ],
+      "summary": "Step: WORKDIR /app",
+      "tags": [],
+      "complexity": "simple"
+    },
+    {
+      "id": "step:Dockerfile:COPY package*.json ./",
+      "type": "pipeline",
+      "name": "COPY package*.json ./",
+      "filePath": "Dockerfile",
+      "lineRange": [
+        5,
+        5
+      ],
+      "summary": "Step: COPY package*.json ./",
+      "tags": [],
+      "complexity": "simple"
+    },
+    {
+      "id": "step:Dockerfile:RUN npm ci --only=production",
+      "type": "pipeline",
+      "name": "RUN npm ci --only=production",
+      "filePath": "Dockerfile",
+      "lineRange": [
+        6,
+        6
+      ],
+      "summary": "Step: RUN npm ci --only=production",
+      "tags": [],
+      "complexity": "simple"
+    },
+    {
+      "id": "step:Dockerfile:COPY . .",
+      "type": "pipeline",
+      "name": "COPY . .",
+      "filePath": "Dockerfile",
+      "lineRange": [
+        8,
+        8
+      ],
+      "summary": "Step: COPY . .",
+      "tags": [],
+      "complexity": "simple"
+    },
+    {
+      "id": "step:Dockerfile:EXPOSE 9200",
+      "type": "pipeline",
+      "name": "EXPOSE 9200",
+      "filePath": "Dockerfile",
+      "lineRange": [
+        10,
+        10
+      ],
+      "summary": "Step: EXPOSE 9200",
+      "tags": [],
+      "complexity": "simple"
+    },
+    {
+      "id": "step:Dockerfile:CMD [\"node\", \"server.js\"]",
+      "type": "pipeline",
+      "name": "CMD [\"node\", \"server.js\"]",
+      "filePath": "Dockerfile",
+      "lineRange": [
+        12,
+        12
+      ],
+      "summary": "Step: CMD [\"node\", \"server.js\"]",
+      "tags": [],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "README.md",
+      "summary": "document file with 47 sections (431 lines).",
+      "tags": [
+        "document",
+        "root"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "config:config.json",
+      "type": "config",
+      "name": "config.json",
+      "filePath": "config.json",
+      "summary": "config file with 2 sections (15 lines).",
+      "tags": [
+        "config",
+        "root"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:health.js",
+      "type": "file",
+      "name": "health.js",
+      "filePath": "health.js",
+      "summary": "javascript source: 2 functions, 0 classes, 2 imports.",
+      "tags": [
+        "javascript",
+        "root"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:health.js:checkService",
+      "type": "function",
+      "name": "checkService",
+      "filePath": "health.js",
+      "lineRange": [
+        10,
+        99
+      ],
+      "summary": "Function checkService(service)",
+      "tags": [],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:health.js:checkCatalog",
+      "type": "function",
+      "name": "checkCatalog",
+      "filePath": "health.js",
+      "lineRange": [
+        102,
+        110
+      ],
+      "summary": "Function checkCatalog(catalog, options)",
+      "tags": [],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:ingress-health.yaml",
+      "type": "config",
+      "name": "ingress-health.yaml",
+      "filePath": "ingress-health.yaml",
+      "summary": "config file with 4 sections (26 lines).",
+      "tags": [
+        "config",
+        "root"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:ingress.yaml",
+      "type": "config",
+      "name": "ingress.yaml",
+      "filePath": "ingress.yaml",
+      "summary": "config file with 4 sections (29 lines).",
+      "tags": [
+        "config",
+        "root"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:kubernetes-rbac.yaml",
+      "type": "config",
+      "name": "kubernetes-rbac.yaml",
+      "filePath": "kubernetes-rbac.yaml",
+      "summary": "config file with 12 sections (33 lines).",
+      "tags": [
+        "config",
+        "root"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:letsencrypt-clusterissuer.yaml",
+      "type": "config",
+      "name": "letsencrypt-clusterissuer.yaml",
+      "filePath": "letsencrypt-clusterissuer.yaml",
+      "summary": "config file with 4 sections (20 lines).",
+      "tags": [
+        "config",
+        "root"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:package.json",
+      "type": "config",
+      "name": "package.json",
+      "filePath": "package.json",
+      "summary": "config file with 7 sections (16 lines).",
+      "tags": [
+        "config",
+        "root"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server.js",
+      "type": "file",
+      "name": "server.js",
+      "filePath": "server.js",
+      "summary": "javascript source: 24 functions, 0 classes, 5 imports.",
+      "tags": [
+        "javascript",
+        "root"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:readFileIfExists",
+      "type": "function",
+      "name": "readFileIfExists",
+      "filePath": "server.js",
+      "lineRange": [
+        87,
+        93
+      ],
+      "summary": "Function readFileIfExists(filePath)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:currentNamespace",
+      "type": "function",
+      "name": "currentNamespace",
+      "filePath": "server.js",
+      "lineRange": [
+        95,
+        100
+      ],
+      "summary": "Function currentNamespace()",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:parseDigest",
+      "type": "function",
+      "name": "parseDigest",
+      "filePath": "server.js",
+      "lineRange": [
+        102,
+        111
+      ],
+      "summary": "Function parseDigest(imageID)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:imageTag",
+      "type": "function",
+      "name": "imageTag",
+      "filePath": "server.js",
+      "lineRange": [
+        113,
+        119
+      ],
+      "summary": "Function imageTag(image)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:parseGhcrImage",
+      "type": "function",
+      "name": "parseGhcrImage",
+      "filePath": "server.js",
+      "lineRange": [
+        121,
+        141
+      ],
+      "summary": "Function parseGhcrImage(image)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:inferPackage",
+      "type": "function",
+      "name": "inferPackage",
+      "filePath": "server.js",
+      "lineRange": [
+        143,
+        151
+      ],
+      "summary": "Function inferPackage()",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:githubPackageUrl",
+      "type": "function",
+      "name": "githubPackageUrl",
+      "filePath": "server.js",
+      "lineRange": [
+        153,
+        158
+      ],
+      "summary": "Function githubPackageUrl(repo, packageName)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:githubBranchUrl",
+      "type": "function",
+      "name": "githubBranchUrl",
+      "filePath": "server.js",
+      "lineRange": [
+        160,
+        163
+      ],
+      "summary": "Function githubBranchUrl(repo, branch)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:githubApiRequest",
+      "type": "function",
+      "name": "githubApiRequest",
+      "filePath": "server.js",
+      "lineRange": [
+        165,
+        203
+      ],
+      "summary": "Function githubApiRequest(apiPath)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:packageVersions",
+      "type": "function",
+      "name": "packageVersions",
+      "filePath": "server.js",
+      "lineRange": [
+        205,
+        216
+      ],
+      "summary": "Function packageVersions(packageName)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:branchFromPackageTags",
+      "type": "function",
+      "name": "branchFromPackageTags",
+      "filePath": "server.js",
+      "lineRange": [
+        218,
+        224
+      ],
+      "summary": "Function branchFromPackageTags()",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:resolvePackageVersion",
+      "type": "function",
+      "name": "resolvePackageVersion",
+      "filePath": "server.js",
+      "lineRange": [
+        226,
+        253
+      ],
+      "summary": "Function resolvePackageVersion()",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:releaseBranchFromTag",
+      "type": "function",
+      "name": "releaseBranchFromTag",
+      "filePath": "server.js",
+      "lineRange": [
+        255,
+        261
+      ],
+      "summary": "Function releaseBranchFromTag(tag, packageName)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:normalizeBranchTag",
+      "type": "function",
+      "name": "normalizeBranchTag",
+      "filePath": "server.js",
+      "lineRange": [
+        263,
+        271
+      ],
+      "summary": "Function normalizeBranchTag(tag)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:firstValue",
+      "type": "function",
+      "name": "firstValue",
+      "filePath": "server.js",
+      "lineRange": [
+        273,
+        275
+      ],
+      "summary": "Function firstValue(...values)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:inferSourceBranch",
+      "type": "function",
+      "name": "inferSourceBranch",
+      "filePath": "server.js",
+      "lineRange": [
+        277,
+        300
+      ],
+      "summary": "Function inferSourceBranch(workload, containerImage, runningImage)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:labelsMatchSelector",
+      "type": "function",
+      "name": "labelsMatchSelector",
+      "filePath": "server.js",
+      "lineRange": [
+        302,
+        304
+      ],
+      "summary": "Function labelsMatchSelector()",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:podMatchesWorkloadSelector",
+      "type": "function",
+      "name": "podMatchesWorkloadSelector",
+      "filePath": "server.js",
+      "lineRange": [
+        306,
+        309
+      ],
+      "summary": "Function podMatchesWorkloadSelector(pod)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:helmReleaseAllowed",
+      "type": "function",
+      "name": "helmReleaseAllowed",
+      "filePath": "server.js",
+      "lineRange": [
+        311,
+        315
+      ],
+      "summary": "Function helmReleaseAllowed()",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:kubeRequest",
+      "type": "function",
+      "name": "kubeRequest",
+      "filePath": "server.js",
+      "lineRange": [
+        317,
+        364
+      ],
+      "summary": "Function kubeRequest(apiPath)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:containerRowsForWorkload",
+      "type": "function",
+      "name": "containerRowsForWorkload",
+      "filePath": "server.js",
+      "lineRange": [
+        366,
+        420
+      ],
+      "summary": "Function containerRowsForWorkload(workload, pods)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:getHelmWorkloads",
+      "type": "function",
+      "name": "getHelmWorkloads",
+      "filePath": "server.js",
+      "lineRange": [
+        422,
+        472
+      ],
+      "summary": "Function getHelmWorkloads()",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:readConfig",
+      "type": "function",
+      "name": "readConfig",
+      "filePath": "server.js",
+      "lineRange": [
+        485,
+        497
+      ],
+      "summary": "Function readConfig(rawConfig)",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server.js:runCronCheck",
+      "type": "function",
+      "name": "runCronCheck",
+      "filePath": "server.js",
+      "lineRange": [
+        553,
+        569
+      ],
+      "summary": "Function runCronCheck()",
+      "tags": [],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:test/health.test.js",
+      "type": "file",
+      "name": "health.test.js",
+      "filePath": "test/health.test.js",
+      "summary": "javascript source: 2 functions, 0 classes, 5 imports.",
+      "tags": [
+        "javascript",
+        "test"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:test/health.test.js:withServer",
+      "type": "function",
+      "name": "withServer",
+      "filePath": "test/health.test.js",
+      "lineRange": [
+        9,
+        18
+      ],
+      "summary": "Function withServer(handler, callback)",
+      "tags": [],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:test/health.test.js:catalog",
+      "type": "function",
+      "name": "catalog",
+      "filePath": "test/health.test.js",
+      "lineRange": [
+        21,
+        24
+      ],
+      "summary": "Function catalog()",
+      "tags": [],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "config:Dockerfile",
+      "target": "service:Dockerfile:node",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "config:Dockerfile",
+      "target": "step:Dockerfile:FROM node:18-alpine",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "config:Dockerfile",
+      "target": "step:Dockerfile:WORKDIR /app",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "config:Dockerfile",
+      "target": "step:Dockerfile:COPY package*.json ./",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "config:Dockerfile",
+      "target": "step:Dockerfile:RUN npm ci --only=production",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "config:Dockerfile",
+      "target": "step:Dockerfile:COPY . .",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "config:Dockerfile",
+      "target": "step:Dockerfile:EXPOSE 9200",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "config:Dockerfile",
+      "target": "step:Dockerfile:CMD [\"node\", \"server.js\"]",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:health.js",
+      "target": "function:health.js:checkService",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:health.js",
+      "target": "function:health.js:checkCatalog",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:readFileIfExists",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:currentNamespace",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:parseDigest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:imageTag",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:parseGhcrImage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:inferPackage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:githubPackageUrl",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:githubBranchUrl",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:githubApiRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:packageVersions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:branchFromPackageTags",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:resolvePackageVersion",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:releaseBranchFromTag",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:normalizeBranchTag",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:firstValue",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:inferSourceBranch",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:labelsMatchSelector",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:podMatchesWorkloadSelector",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:helmReleaseAllowed",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:kubeRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:containerRowsForWorkload",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:getHelmWorkloads",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:readConfig",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server.js",
+      "target": "function:server.js:runCronCheck",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:test/health.test.js",
+      "target": "function:test/health.test.js:withServer",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:test/health.test.js",
+      "target": "function:test/health.test.js:catalog",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "function:server.js:runCronCheck",
+      "target": "function:health.js:checkCatalog",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer:core",
+      "name": "Core",
+      "description": "Core application files",
+      "nodeIds": [
+        "file:health.js",
+        "file:server.js"
+      ]
+    },
+    {
+      "id": "layer:test-layer",
+      "name": "Test Layer",
+      "description": "Test files and test utilities",
+      "nodeIds": [
+        "file:test/health.test.js"
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "Core",
+      "description": "Core application files. Key files: health.js, server.js.",
+      "nodeIds": [
+        "file:health.js",
+        "file:server.js"
+      ]
+    },
+    {
+      "order": 2,
+      "title": "Test Layer",
+      "description": "Test files and test utilities. Key files: health.test.js.",
+      "nodeIds": [
+        "file:test/health.test.js"
+      ]
+    },
+    {
+      "order": 3,
+      "title": "Supporting Components",
+      "description": "Additional supporting files: AGENTS.md, DEPLOYMENT.md, Dockerfile, README.md, config.json, ingress-health.yaml, ingress.yaml, kubernetes-rbac.yaml, letsencrypt-clusterissuer.yaml, package.json, node, FROM node:18-alpine, WORKDIR /app, COPY package*.json ./, RUN npm ci --only=production, COPY . ., EXPOSE 9200, CMD [\"node\", \"server.js\"], checkService, readFileIfExists, currentNamespace, parseDigest, imageTag, parseGhcrImage, inferPackage, githubPackageUrl, githubBranchUrl, githubApiRequest, packageVersions, branchFromPackageTags, resolvePackageVersion, releaseBranchFromTag, normalizeBranchTag, firstValue, inferSourceBranch, labelsMatchSelector, podMatchesWorkloadSelector, helmReleaseAllowed, kubeRequest, containerRowsForWorkload, getHelmWorkloads, readConfig, runCronCheck, withServer, catalog, checkCatalog.",
+      "nodeIds": [
+        "document:AGENTS.md",
+        "document:DEPLOYMENT.md",
+        "config:Dockerfile",
+        "document:README.md",
+        "config:config.json",
+        "config:ingress-health.yaml",
+        "config:ingress.yaml",
+        "config:kubernetes-rbac.yaml",
+        "config:letsencrypt-clusterissuer.yaml",
+        "config:package.json",
+        "service:Dockerfile:node",
+        "step:Dockerfile:FROM node:18-alpine",
+        "step:Dockerfile:WORKDIR /app",
+        "step:Dockerfile:COPY package*.json ./",
+        "step:Dockerfile:RUN npm ci --only=production",
+        "step:Dockerfile:COPY . .",
+        "step:Dockerfile:EXPOSE 9200",
+        "step:Dockerfile:CMD [\"node\", \"server.js\"]",
+        "function:health.js:checkService",
+        "function:server.js:readFileIfExists",
+        "function:server.js:currentNamespace",
+        "function:server.js:parseDigest",
+        "function:server.js:imageTag",
+        "function:server.js:parseGhcrImage",
+        "function:server.js:inferPackage",
+        "function:server.js:githubPackageUrl",
+        "function:server.js:githubBranchUrl",
+        "function:server.js:githubApiRequest",
+        "function:server.js:packageVersions",
+        "function:server.js:branchFromPackageTags",
+        "function:server.js:resolvePackageVersion",
+        "function:server.js:releaseBranchFromTag",
+        "function:server.js:normalizeBranchTag",
+        "function:server.js:firstValue",
+        "function:server.js:inferSourceBranch",
+        "function:server.js:labelsMatchSelector",
+        "function:server.js:podMatchesWorkloadSelector",
+        "function:server.js:helmReleaseAllowed",
+        "function:server.js:kubeRequest",
+        "function:server.js:containerRowsForWorkload",
+        "function:server.js:getHelmWorkloads",
+        "function:server.js:readConfig",
+        "function:server.js:runCronCheck",
+        "function:test/health.test.js:withServer",
+        "function:test/health.test.js:catalog",
+        "function:health.js:checkCatalog"
+      ]
+    }
+  ]
+}
