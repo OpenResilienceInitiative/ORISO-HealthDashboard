@@ -11,8 +11,8 @@
     ],
     "frameworks": [],
     "description": "",
-    "analyzedAt": "2026-08-26T07:28:30.951Z",
-    "gitCommitHash": "60d273e455739a96f73317a28893eb4952512ad6"
+    "analyzedAt": "2026-08-27T12:31:57.828Z",
+    "gitCommitHash": "5350bff00f9fbde2750198f9f3e21c1d09a0b2f1"
   },
   "nodes": [
     {
@@ -634,6 +634,51 @@
       "summary": "Function catalog()",
       "tags": [],
       "complexity": "moderate"
+    },
+    {
+      "id": "concept:service-health-checks",
+      "type": "concept",
+      "name": "Service Health Checks",
+      "summary": "Node service (server.js + health.js) that probes the ORISO services listed in config.json and renders their status on a single dashboard page (public/index.html).",
+      "tags": [
+        "domain",
+        "observability",
+        "enriched"
+      ],
+      "complexity": "moderate",
+      "metadata": {
+        "enrichment": "a-lite-2026-07",
+        "generatedBy": "claude-operator-coarse-pass"
+      }
+    },
+    {
+      "id": "concept:cluster-deployment",
+      "type": "concept",
+      "name": "Cluster Deployment",
+      "summary": "Kubernetes wiring for the dashboard itself: ingress definitions, RBAC for in-cluster probing, and a Let's Encrypt cluster issuer.",
+      "tags": [
+        "infrastructure",
+        "enriched"
+      ],
+      "complexity": "moderate",
+      "metadata": {
+        "enrichment": "a-lite-2026-07",
+        "generatedBy": "claude-operator-coarse-pass"
+      }
+    },
+    {
+      "id": "flow:health-probe",
+      "type": "flow",
+      "name": "Health Probe Cycle",
+      "summary": "server.js periodically calls health.js probes against each configured service → aggregates up/down state → the dashboard page displays the result.",
+      "tags": [
+        "enriched"
+      ],
+      "complexity": "moderate",
+      "metadata": {
+        "enrichment": "a-lite-2026-07",
+        "generatedBy": "claude-operator-coarse-pass"
+      }
     }
   ],
   "edges": [
@@ -895,9 +940,103 @@
       "type": "calls",
       "direction": "forward",
       "weight": 0.8
+    },
+    {
+      "source": "concept:service-health-checks",
+      "target": "file:server.js",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "concept:service-health-checks",
+      "target": "file:health.js",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "concept:service-health-checks",
+      "target": "config:config.json",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "concept:service-health-checks",
+      "target": "file:test/health.test.js",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "concept:cluster-deployment",
+      "target": "config:ingress.yaml",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "concept:cluster-deployment",
+      "target": "config:ingress-health.yaml",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "concept:cluster-deployment",
+      "target": "config:kubernetes-rbac.yaml",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "concept:cluster-deployment",
+      "target": "config:letsencrypt-clusterissuer.yaml",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "concept:cluster-deployment",
+      "target": "document:DEPLOYMENT.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "flow:health-probe",
+      "target": "file:server.js",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "flow:health-probe",
+      "target": "file:health.js",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "flow:health-probe",
+      "target": "config:config.json",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.7
     }
   ],
   "layers": [
+    {
+      "id": "layer:domain-concepts",
+      "name": "Domain Concepts",
+      "description": "High-level domain concepts and flows (coarse enrichment pass).",
+      "nodeIds": [
+        "concept:service-health-checks",
+        "concept:cluster-deployment",
+        "flow:health-probe"
+      ]
+    },
     {
       "id": "layer:core",
       "name": "Core",
