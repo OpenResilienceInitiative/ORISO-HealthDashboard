@@ -22,3 +22,19 @@ delivery rules"). Summary:
   say so in the report.
 - **State where it was verified** in every PR body — environment and image, or
   plainly "local only".
+
+## Agent skills
+
+For Matt Pocock engineering workflows, resolve `~/.config/agent-routing/paths.env` and follow `${PROJECT_ORISO_ROOT}/AGENTS.md`. Reuse shared installed skills; load these adapters on demand.
+
+### Issue tracker
+
+GitHub Issues in `OpenResilienceInitiative/ORISO-HealthDashboard`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Reuse existing labels; leave unmapped roles unchanged. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context; shared knowledge stays in the project Core. See `docs/agents/domain.md`.
