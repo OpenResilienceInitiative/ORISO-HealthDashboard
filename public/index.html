@@ -549,11 +549,14 @@
         });
 
         // Helm Images entry is only shown when the API allows it (not for
-        // unauthenticated users, see #57). Probe first; hide on any non-OK response.
+        // unauthenticated users, see #57). Probe first; hide only when refused (403),
+        // so an inventory error still shows the entry and its error message.
         fetch(apiPath('/api/helm-workloads'))
-          .then(r => r.ok ? r.json() : null)
+          .then(r => r.status === 403 ? null : r.json().catch(() => ({ workloads: [] })))
           .then(data => {
-            if (!data) return;
+            // Skip if refused, or if the list was re-rendered meanwhile (that render
+            // runs its own probe), so the entry is never added twice.
+            if (!data || !cron.isConnected) return;
             const stack = document.createElement('div');
             stack.className = 'svc' + (activeKey === '__helm__' ? ' active' : '');
             const sdot = document.createElement('div');
@@ -564,7 +567,7 @@
             stack.appendChild(sdot);
             stack.appendChild(slabel);
             stack.onclick = () => showHelmWorkloads();
-            listEl.insertBefore(stack, listEl.children[1] || null);
+            cron.after(stack);
           })
           .catch(() => {});
       }
@@ -572,7 +575,23 @@
       function renderDetails(json) {
         detailsEl.innerHTML = '';
         const rows = [];
-        
+
+        // Public mode (#57) returns only {status, checkedAt} from the last scheduled run.
+        if (!json.components && 'checkedAt' in json) {
+          const ok = json.status === 'UP';
+          const checked = json.checkedAt ? new Date(json.checkedAt).toLocaleString() : 'not yet checked';
+          detailsEl.innerHTML = `
+            <div class="component-card" style="grid-column: 1 / -1;">
+              <div class="component-title">Status</div>
+              <div class="status-indicator ${ok?'up':'down'}">
+                <div class="status-dot" style="background:${ok?'#10b981':'#ef4444'}"></div>
+                ${escapeHtml(json.status || 'UNKNOWN')}
+              </div>
+              <div style="font-size:13px;color:#64748b;margin-top:8px">Last scheduled check: ${escapeHtml(checked)}</div>
+            </div>`;
+          return;
+        }
+
         if (json.components) {
           Object.entries(json.components).forEach(([k,v]) => {
             const ok = v.status === 'UP';
@@ -616,6 +635,8 @@
       async function loadQuickLinks() {
         try {
           const response = await fetch(apiPath('/api/quick-links'));
+          // 403 in public mode (#57): hide the section instead of showing it empty.
+          if (response.status === 403) return null;
           if (!response.ok) throw new Error('Unable to load quick links');
           return await response.json();
         } catch {
@@ -631,13 +652,15 @@
         renderList();
         const quickLinks = await loadQuickLinks();
         
-        detailsEl.innerHTML = `
+        const quickLinksCard = quickLinks === null ? '' : `
           <div class="component-card" style="grid-column: 1 / -1;">
             <div class="component-title">Quick Links</div>
             <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px">
               ${renderQuickLinks(quickLinks)}
             </div>
-          </div>
+          </div>`;
+
+        detailsEl.innerHTML = `${quickLinksCard}
           <div class="component-card" style="grid-column: 1 / -1;">
             <div class="component-title">About This Dashboard</div>
             <p style="color:#64748b;font-size:14px;margin:8px 0">
@@ -837,7 +860,7 @@
         activeKey = key;
         const svc = services[key];
         titleEl.textContent = svc.name || key;
-        urlEl.textContent = svc.url;
+        urlEl.textContent = svc.url || '';
         stateEl.style.display = 'inline-flex';
         statusPill(false);
         renderList();
