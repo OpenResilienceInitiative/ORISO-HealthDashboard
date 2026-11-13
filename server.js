@@ -579,7 +579,15 @@ app.get('/api/cron/runs', (req, res) => {
   res.json(cronRuns);
 });
 
+// Interim visibility split (#57): the Helm image inventory is not served to
+// unauthenticated users. Authorised access via Keycloak is tracked in #58.
+// Set ORISO_HELM_IMAGES_PUBLIC=true to restore the previous public behaviour.
+const HELM_IMAGES_PUBLIC = String(process.env.ORISO_HELM_IMAGES_PUBLIC || '').toLowerCase() === 'true';
+
 app.get('/api/helm-workloads', async (req, res) => {
+  if (!HELM_IMAGES_PUBLIC) {
+    return res.status(403).json({ error: 'Helm image inventory requires authorisation' });
+  }
   try {
     res.json(await getHelmWorkloads());
   } catch (err) {

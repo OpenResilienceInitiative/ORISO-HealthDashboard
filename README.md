@@ -72,6 +72,11 @@ ORISO_HELM_NAMESPACE=caritas
 # Helm-managed workload in the namespace.
 ORISO_HELM_RELEASES=oriso
 
+# The Helm Images inventory (/api/helm-workloads) is hidden from unauthenticated
+# users by default (#57); authorised access will come via Keycloak (#58).
+# Set to true only to restore the previous public behaviour.
+# ORISO_HELM_IMAGES_PUBLIC=false
+
 # Optional GitHub token used to resolve exact package-version URLs for image
 # digests, e.g. /pkgs/container/oriso-agencyservice/1070196056?tag=pre-dev.
 # Without this token the dashboard links to the package page only.

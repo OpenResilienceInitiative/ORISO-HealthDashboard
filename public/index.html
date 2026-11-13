@@ -525,19 +525,6 @@
         cron.onclick = () => showCron();
         listEl.appendChild(cron);
 
-        // Helm image inventory entry
-        const stack = document.createElement('div');
-        stack.className = 'svc' + (activeKey === '__helm__' ? ' active' : '');
-        const sdot = document.createElement('div');
-        sdot.className = 'status-dot';
-        sdot.style.background = '#f59e0b';
-        const slabel = document.createElement('div');
-        slabel.textContent = 'Helm Images';
-        stack.appendChild(sdot);
-        stack.appendChild(slabel);
-        stack.onclick = () => showHelmWorkloads();
-        listEl.appendChild(stack);
-
         Object.entries(services).forEach(([key, svc]) => {
           const row = document.createElement('div');
           row.className = 'svc' + (key === activeKey ? ' active' : '');
@@ -561,11 +548,23 @@
             .catch(() => { dot.style.background = '#ef4444'; });
         });
 
-        // Update Helm Images dot color based on inventory availability.
+        // Helm Images entry is only shown when the API allows it (not for
+        // unauthenticated users, see #57). Probe first; hide on any non-OK response.
         fetch(apiPath('/api/helm-workloads'))
-          .then(r => r.json().catch(() => ({ workloads: [] })))
+          .then(r => r.ok ? r.json() : null)
           .then(data => {
+            if (!data) return;
+            const stack = document.createElement('div');
+            stack.className = 'svc' + (activeKey === '__helm__' ? ' active' : '');
+            const sdot = document.createElement('div');
+            sdot.className = 'status-dot';
             sdot.style.background = data.workloads && data.workloads.length > 0 ? '#10b981' : '#f59e0b';
+            const slabel = document.createElement('div');
+            slabel.textContent = 'Helm Images';
+            stack.appendChild(sdot);
+            stack.appendChild(slabel);
+            stack.onclick = () => showHelmWorkloads();
+            listEl.insertBefore(stack, listEl.children[1] || null);
           })
           .catch(() => {});
       }
