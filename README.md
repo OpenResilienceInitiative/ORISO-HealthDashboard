@@ -72,6 +72,13 @@ ORISO_HELM_NAMESPACE=caritas
 # Helm-managed workload in the namespace.
 ORISO_HELM_RELEASES=oriso
 
+# Public mode (#57) is on by default so the dashboard can be served without
+# login: service URLs, raw actuator bodies, errors, quick links and the Helm
+# image inventory are withheld, health status is answered from the last
+# scheduled run, and POST /api/cron/run is refused. Authorised access will
+# come via Keycloak (#58). Set to false only behind other access control.
+# ORISO_PUBLIC_MODE=true
+
 # Optional GitHub token used to resolve exact package-version URLs for image
 # digests, e.g. /pkgs/container/oriso-agencyservice/1070196056?tag=pre-dev.
 # Without this token the dashboard links to the package page only.
