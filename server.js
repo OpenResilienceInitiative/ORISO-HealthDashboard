@@ -4,10 +4,15 @@ import path from 'path';
 import https from 'https';
 
 import { checkCatalog, checkService } from './health.js';
+import { isPublicMode, publicHealth, publicServices, publicStatus } from './public-view.js';
 
 const app = express();
 const PORT = process.env.PORT || 9100;
 const HEALTH_CHECK_TIMEOUT_MS = Number(process.env.HEALTH_CHECK_TIMEOUT_MS || 5000);
+// Public mode (#57) is on unless ORISO_PUBLIC_MODE=false. It strips internal
+// details and disables operator-only endpoints until Keycloak login (#58).
+const PUBLIC_MODE = isPublicMode();
+const FORBIDDEN_IN_PUBLIC_MODE = { error: 'This endpoint requires authorisation' };
 // Working directory where server.js is started; we assume you run from health-dashboard/
 const ROOT = path.resolve();
 const SERVICE_ACCOUNT_DIR = '/var/run/secrets/kubernetes.io/serviceaccount';
@@ -519,17 +524,22 @@ app.use(express.static(path.join(ROOT, 'public')));
 app.use(express.json());
 
 app.get('/api/services', (req, res) => {
-  res.json(services);
+  res.json(PUBLIC_MODE ? publicServices(services) : services);
 });
 
 app.get('/api/quick-links', (req, res) => {
+  if (PUBLIC_MODE) return res.status(403).json(FORBIDDEN_IN_PUBLIC_MODE);
   res.json(quickLinks);
 });
 
+// Latest per-service status from the scheduled run, served in public mode.
+const latestStatus = {};
+
 app.get('/api/health/:key', async (req, res) => {
   const key = req.params.key;
-  const svc = services[key];
+  const svc = Object.hasOwn(services, key) ? services[key] : undefined;
   if (!svc) return res.status(404).json({ error: 'Unknown service' });
+  if (PUBLIC_MODE) return res.json(publicHealth(latestStatus[key]));
 
   const result = await checkService(svc, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS });
   if (result.up) return res.json(result.body);
@@ -557,6 +567,9 @@ async function runCronCheck() {
     Object.entries(readback).map(([key, result]) => [key, result.up ? 'UP' : 'DOWN'])
   );
   const allUp = Object.values(readback).every(result => result.up);
+  for (const [key, result] of Object.entries(readback)) {
+    latestStatus[key] = { status: publicStatus(result), checkedAt: timestamp };
+  }
   const entry = {
     id: ++cronRunId,
     timestamp,
@@ -580,6 +593,7 @@ app.get('/api/cron/runs', (req, res) => {
 });
 
 app.get('/api/helm-workloads', async (req, res) => {
+  if (PUBLIC_MODE) return res.status(403).json(FORBIDDEN_IN_PUBLIC_MODE);
   try {
     res.json(await getHelmWorkloads());
   } catch (err) {
@@ -596,10 +610,12 @@ app.get('/api/helm-workloads', async (req, res) => {
 
 // API to trigger a run now
 app.post('/api/cron/run', async (req, res) => {
+  // Each run fans out to every service; public callers must not trigger it.
+  if (PUBLIC_MODE) return res.status(403).json(FORBIDDEN_IN_PUBLIC_MODE);
   const entry = await runCronCheck();
   res.json(entry);
 });
 
 app.listen(PORT, () => {
-  console.log(`Health dashboard listening on http://localhost:${PORT}`);
+  console.log(`Health dashboard listening on http://localhost:${PORT} (public mode: ${PUBLIC_MODE ? 'on' : 'off'})`);
 });
