@@ -1,5 +1,5 @@
 name: Reusable Docker build, scan and publish steps
-description: Build and scan the container image before optional publication to GHCR
+description: Scan the OCI archive before publishing the same image to GHCR
 
 inputs:
   push_to_ghcr:
@@ -9,14 +9,20 @@ inputs:
     description: Image name without the registry and organization
     required: true
   github_token:
-    description: GitHub token used when publishing to GHCR
-    required: true
+    description: GitHub token used only to publish to GHCR
+    required: false
+    default: ''
   image_tags:
     description: Explicit image tags for a versioned release
     default: ''
   image_labels:
     description: Explicit OCI labels for a versioned release
     default: ''
+
+outputs:
+  archive_sha256:
+    description: SHA-256 of the verified and scanned OCI archive
+    value: ${{ steps.scan.outputs.archive_sha256 }}
 
 runs:
   using: 'composite'
@@ -36,31 +42,41 @@ runs:
         type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
         type=raw,value=pre-dev,enable=${{ github.ref == 'refs/heads/pre-dev' }}
 
-  # Use the same builder, platform and labels as the publish build. Buildx
-  # reuses the local layers. The scan image is loaded without attestations
-  # because the Docker exporter does not support them.
-  - name: Build image locally for scanning
+  - name: Build the complete amd64 image without publishing
+    id: build
     uses: docker/build-push-action@v7
     with:
       context: .
       platforms: linux/amd64
       push: false
-      load: true
-      provenance: false
-      sbom: false
-      tags: ${{ inputs.image_name }}:ci-scan
+      outputs: type=oci,dest=${{ runner.temp }}/${{ inputs.image_name }}.tar
+      # Keep Buildx's existing publication provenance policy.
+      provenance: ${{ github.event.repository.private && 'mode=min' || 'mode=max' }}
       labels: ${{ inputs.image_labels || steps.meta.outputs.labels }}
       cache-from: type=gha
+      cache-to: type=gha,mode=max
+
+  - name: Install OCI transport
+    shell: bash
+    run: |
+      if ! command -v skopeo >/dev/null; then
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends skopeo
+      fi
+
+  - name: Install Trivy
+    uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+    with:
+      version: v0.70.0
+      cache: true
 
   - name: Reject fixable high or critical image vulnerabilities
-    uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-    with:
-      image-ref: ${{ inputs.image_name }}:ci-scan
-      format: table
-      exit-code: '1'
-      ignore-unfixed: true
-      vuln-type: os,library
-      severity: CRITICAL,HIGH
+    id: scan
+    shell: bash
+    env:
+      IMAGE_ARCHIVE: ${{ runner.temp }}/${{ inputs.image_name }}.tar
+      EXPECTED_DIGEST: ${{ steps.build.outputs.digest }}
+    run: bash scripts/ci/scan-image-archive.sh "$IMAGE_ARCHIVE" linux/amd64 "$EXPECTED_DIGEST"
 
   - name: Login to GitHub Container Registry
     if: ${{ inputs.push_to_ghcr == 'true' }}
@@ -70,14 +86,13 @@ runs:
       username: ${{ github.actor }}
       password: ${{ inputs.github_token }}
 
-  - name: Build Docker image and publish when enabled
-    id: build
-    uses: docker/build-push-action@v7
-    with:
-      context: .
-      platforms: linux/amd64
-      push: ${{ inputs.push_to_ghcr }}
-      tags: ${{ inputs.image_tags || steps.meta.outputs.tags }}
-      labels: ${{ inputs.image_labels || steps.meta.outputs.labels }}
-      cache-from: type=gha
-      cache-to: type=gha,mode=max
+  - name: Publish the scanned archive without rebuilding
+    id: publish
+    if: ${{ inputs.push_to_ghcr == 'true' }}
+    shell: bash
+    env:
+      IMAGE_ARCHIVE: ${{ runner.temp }}/${{ inputs.image_name }}.tar
+      IMAGE_TAGS: ${{ inputs.image_tags || steps.meta.outputs.tags }}
+      EXPECTED_DIGEST: ${{ steps.build.outputs.digest }}
+      EXPECTED_ARCHIVE_SHA256: ${{ steps.scan.outputs.archive_sha256 }}
+    run: bash scripts/ci/publish-image-archive.sh "$IMAGE_ARCHIVE" "$EXPECTED_DIGEST" "$EXPECTED_ARCHIVE_SHA256"
