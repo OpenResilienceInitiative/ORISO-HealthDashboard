@@ -4,6 +4,7 @@ import path from 'path';
 import https from 'https';
 
 import { checkCatalog, checkService } from './health.js';
+import { KubernetesInventoryError, parseDigest, requestKubeJson, runningImageDigests } from './kube-inventory.js';
 import { isPublicMode, publicHealth, publicServices, publicStatus } from './public-view.js';
 
 const app = express();
@@ -102,17 +103,6 @@ function currentNamespace() {
     process.env.KUBERNETES_NAMESPACE ||
     readFileIfExists(KUBE_NAMESPACE_PATH) ||
     'caritas';
-}
-
-function parseDigest(imageID) {
-  if (!imageID) return '';
-  const digestMatch = imageID.match(/@(sha256:[a-f0-9]+)/i);
-  if (digestMatch) return digestMatch[1];
-
-  const idMatch = imageID.match(/(?:^|:\/\/)(sha256:[a-f0-9]+)/i);
-  if (idMatch) return idMatch[1];
-
-  return imageID;
 }
 
 function imageTag(image) {
@@ -319,53 +309,31 @@ function helmReleaseAllowed(labels = {}) {
   return HELM_RELEASES.includes(labels['app.kubernetes.io/instance']);
 }
 
-function kubeRequest(apiPath) {
-  return new Promise((resolve, reject) => {
-    if (!KUBE_API_HOST) {
-      reject(new Error('Kubernetes API is not available outside the cluster'));
-      return;
+async function kubeRequest(apiPath) {
+  if (!KUBE_API_HOST) {
+    throw new KubernetesInventoryError('Kubernetes API is not available outside the cluster');
+  }
+
+  const token = readFileIfExists(KUBE_TOKEN_PATH);
+  if (!token) {
+    throw new KubernetesInventoryError('Kubernetes service account token is not available');
+  }
+
+  const requestOptions = {
+    hostname: KUBE_API_HOST,
+    port: KUBE_API_PORT,
+    path: apiPath,
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`
     }
+  };
 
-    const token = readFileIfExists(KUBE_TOKEN_PATH);
-    if (!token) {
-      reject(new Error('Kubernetes service account token is not available'));
-      return;
-    }
+  const ca = readFileIfExists(KUBE_CA_PATH);
+  if (ca) requestOptions.ca = ca;
 
-    const requestOptions = {
-      hostname: KUBE_API_HOST,
-      port: KUBE_API_PORT,
-      path: apiPath,
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`
-      }
-    };
-
-    const ca = readFileIfExists(KUBE_CA_PATH);
-    if (ca) requestOptions.ca = ca;
-
-    const req = https.request(requestOptions, response => {
-      let data = '';
-      response.on('data', chunk => (data += chunk));
-      response.on('end', () => {
-        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`Kubernetes API returned HTTP ${response.statusCode}: ${data}`));
-          return;
-        }
-
-        try {
-          resolve(JSON.parse(data || '{}'));
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
-
-    req.on('error', reject);
-    req.end();
-  });
+  return requestKubeJson(requestOptions);
 }
 
 async function containerRowsForWorkload(workload, pods) {
@@ -382,7 +350,11 @@ async function containerRowsForWorkload(workload, pods) {
       ...(pod.status?.initContainerStatuses || []),
       ...(pod.status?.containerStatuses || [])
     ]).filter(status => status.name === container.name);
-    const runningStatus = statuses.find(status => status.imageID) || statuses[0] || {};
+    const runningStatus =
+      statuses.find(status => status.state?.running && status.imageID) ||
+      statuses.find(status => status.imageID) ||
+      statuses[0] ||
+      {};
     const digest = parseDigest(runningStatus.imageID);
     const runningImage = runningStatus.image || container.image || '';
     const parsedImage = parseGhcrImage(runningImage) || parseGhcrImage(container.image || '');
@@ -410,6 +382,7 @@ async function containerRowsForWorkload(workload, pods) {
       runningImage,
       imageID: runningStatus.imageID || '',
       digest,
+      runningDigests: runningImageDigests(statuses),
       packageName,
       packageUrl: packageVersion.url,
       packageTags: packageVersion.tags,
@@ -603,7 +576,7 @@ app.get('/api/helm-workloads', async (req, res) => {
       count: 0,
       generatedAt: new Date().toISOString(),
       workloads: [],
-      error: err.message
+      error: err instanceof KubernetesInventoryError ? err.message : 'Unable to load Helm image inventory'
     });
   }
 });
