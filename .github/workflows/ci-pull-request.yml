@@ -18,7 +18,7 @@ jobs:
     - name: Validate Node service
       uses: ./.github/actions/node-validate
       with:
-        node_version: '18'
+        node_version: '22.23.5'
 
     - name: Create Docker image
       uses: ./.github/actions/docker-build-push
@@ -26,3 +26,23 @@ jobs:
         push_to_ghcr: false
         image_name: health-dashboard
         github_token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Start the scanned runtime image
+      shell: bash
+      run: |
+        set -euo pipefail
+        container=$(docker run --detach --network none health-dashboard:ci-scan)
+        trap 'docker rm -f "$container" >/dev/null' EXIT
+        for attempt in {1..15}; do
+          if docker exec "$container" node -e '
+            fetch("http://127.0.0.1:9100/api/services")
+              .then(async (response) => {
+                if (!response.ok || !(await response.json())) process.exitCode = 1;
+              }).catch(() => { process.exitCode = 1; });
+          '; then
+            exit 0
+          fi
+          sleep 1
+        done
+        docker logs "$container"
+        exit 1
