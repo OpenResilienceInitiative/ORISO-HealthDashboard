@@ -8,7 +8,12 @@ const dashboardScript = dashboard.match(/<script>([\s\S]*?)<\/script>/)[1];
 
 async function renderHelmInventory(container) {
   const details = {};
-  const element = () => ({ style: {}, appendChild() {} });
+  const element = () => ({
+    style: {},
+    addEventListener() {},
+    appendChild() {},
+    querySelector() { return null; }
+  });
   const inventory = {
     namespace: 'namespace',
     generatedAt: '2026-11-19T00:00:00Z',
@@ -21,17 +26,28 @@ async function renderHelmInventory(container) {
   };
 
   const context = vm.createContext({
+    URL,
     document: {
       getElementById: id => id === 'svc-details' ? details : element(),
       createElement: element
     },
-    window: { location: { pathname: '/' } },
-    fetch: path => path === '/api/services'
-      ? new Promise(() => {})
-      : Promise.resolve({ ok: true, json: async () => inventory })
+    window: { location: { pathname: '/', origin: 'https://dashboard.example' } },
+    fetch: (path, options) => {
+      if (path === '/api/services') return new Promise(() => {});
+      if (path === '/api/operator-session') {
+        return Promise.resolve({ ok: true, json: async () => ({ login: null }) });
+      }
+      assert.equal(path, '/api/helm-workloads');
+      assert.equal(options.headers.Authorization, 'Bearer fixture-token');
+      return Promise.resolve({ ok: true, json: async () => inventory });
+    }
   });
 
-  await vm.runInContext(dashboardScript + '\nshowHelmWorkloads();', context);
+  await vm.runInContext(dashboardScript + `
+    operatorAuth = { headers: () => ({ Authorization: 'Bearer fixture-token' }) };
+    setOperatorSession({ authenticated: true, canViewHelmImages: true });
+    showHelmWorkloads();
+  `, context);
   return details.innerHTML;
 }
 
