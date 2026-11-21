@@ -10,6 +10,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
     - name: Checkout repository
@@ -18,11 +20,41 @@ jobs:
     - name: Validate Node service
       uses: ./.github/actions/node-validate
       with:
-        node_version: '18'
+        node_version: '22.23.5'
 
     - name: Create Docker image
+      id: image
       uses: ./.github/actions/docker-build-push
       with:
         push_to_ghcr: false
         image_name: health-dashboard
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Start the scanned runtime image
+      shell: bash
+      env:
+        EXPECTED_ARCHIVE_SHA256: ${{ steps.image.outputs.archive_sha256 }}
+      run: |
+        set -euo pipefail
+        archive="$RUNNER_TEMP/health-dashboard.tar"
+        checksum=$(sha256sum "$archive")
+        if [[ "${checksum%% *}" != "$EXPECTED_ARCHIVE_SHA256" ]]; then
+          echo 'The archive to start differs from the scanned archive.' >&2
+          exit 1
+        fi
+        skopeo --override-os linux --override-arch amd64 copy \
+          "oci-archive:$archive" docker-daemon:health-dashboard:ci-scan
+        container=$(docker run --detach --network none health-dashboard:ci-scan)
+        trap 'docker rm -f "$container" >/dev/null' EXIT
+        for attempt in {1..15}; do
+          if docker exec "$container" node -e '
+            fetch("http://127.0.0.1:9100/api/services")
+              .then(async (response) => {
+                if (!response.ok || !(await response.json())) process.exitCode = 1;
+              }).catch(() => { process.exitCode = 1; });
+          '; then
+            exit 0
+          fi
+          sleep 1
+        done
+        docker logs "$container"
+        exit 1
