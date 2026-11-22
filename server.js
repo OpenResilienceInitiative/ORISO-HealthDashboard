@@ -2,17 +2,19 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
+import { fileURLToPath } from 'node:url';
 
 import { checkCatalog, checkService } from './health.js';
 import { KubernetesInventoryError, parseDigest, requestKubeJson, runningImageDigests } from './kube-inventory.js';
+import { createOperatorAuth } from './operator-auth.js';
 import { isPublicMode, publicHealth, publicServices, publicStatus } from './public-view.js';
 
 const app = express();
 const PORT = process.env.PORT || 9100;
 const HEALTH_CHECK_TIMEOUT_MS = Number(process.env.HEALTH_CHECK_TIMEOUT_MS || 5000);
-// Public mode (#57) is on unless ORISO_PUBLIC_MODE=false. It strips internal
-// details and disables operator-only endpoints until Keycloak login (#58).
+// Public mode shapes health responses. The inventory has its own Keycloak role gate.
 const PUBLIC_MODE = isPublicMode();
+const operatorAuth = createOperatorAuth();
 const FORBIDDEN_IN_PUBLIC_MODE = { error: 'This endpoint requires authorisation' };
 // Working directory where server.js is started; we assume you run from health-dashboard/
 const ROOT = path.resolve();
@@ -496,6 +498,20 @@ try {
 app.use(express.static(path.join(ROOT, 'public')));
 app.use(express.json());
 
+const keycloakLibrary = path.dirname(fileURLToPath(import.meta.resolve('keycloak-js')));
+for (const file of ['keycloak.js', 'deprecations.js']) {
+  app.get(`/vendor/keycloak/${file}`, (req, res) => res.sendFile(file, { root: keycloakLibrary }));
+}
+// The ingress forwards the public /health/auth/callback as /auth/callback.
+app.get('/auth/callback', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile('index.html', { root: path.join(ROOT, 'public') });
+});
+app.get('/api/operator-session', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  res.json(await operatorAuth.session(req.get('Authorization')));
+});
+
 app.get('/api/services', (req, res) => {
   res.json(PUBLIC_MODE ? publicServices(services) : services);
 });
@@ -566,7 +582,9 @@ app.get('/api/cron/runs', (req, res) => {
 });
 
 app.get('/api/helm-workloads', async (req, res) => {
-  if (PUBLIC_MODE) return res.status(403).json(FORBIDDEN_IN_PUBLIC_MODE);
+  res.set('Cache-Control', 'private, no-store');
+  const { canViewHelmImages } = await operatorAuth.session(req.get('Authorization'));
+  if (!canViewHelmImages) return res.status(403).json(FORBIDDEN_IN_PUBLIC_MODE);
   try {
     res.json(await getHelmWorkloads());
   } catch (err) {
