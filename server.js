@@ -4,6 +4,7 @@ import path from 'path';
 import https from 'https';
 import { fileURLToPath } from 'node:url';
 
+import { createHealthRuns } from './health-runs.js';
 import { checkCatalog, checkService } from './health.js';
 import { KubernetesInventoryError, parseDigest, requestKubeJson, runningImageDigests } from './kube-inventory.js';
 import { createOperatorAuth } from './operator-auth.js';
@@ -521,14 +522,16 @@ app.get('/api/quick-links', (req, res) => {
   res.json(quickLinks);
 });
 
-// Latest per-service status from the scheduled run, served in public mode.
-const latestStatus = {};
+const healthRuns = createHealthRuns(
+  () => checkCatalog(services, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS }),
+  publicStatus
+);
 
 app.get('/api/health/:key', async (req, res) => {
   const key = req.params.key;
   const svc = Object.hasOwn(services, key) ? services[key] : undefined;
   if (!svc) return res.status(404).json({ error: 'Unknown service' });
-  if (PUBLIC_MODE) return res.json(publicHealth(latestStatus[key]));
+  if (PUBLIC_MODE) return res.json(publicHealth(healthRuns.getStatus(key)));
 
   const result = await checkService(svc, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS });
   if (result.up) return res.json(result.body);
@@ -546,39 +549,15 @@ app.get('/api/health/:key', async (req, res) => {
 // ------------------------------
 // Cron: health checks every 60s
 // ------------------------------
-let cronRunId = 0;
-const cronRuns = []; // keep last 10
-
-async function runCronCheck() {
-  const timestamp = new Date().toISOString();
-  const readback = await checkCatalog(services, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS });
-  const results = Object.fromEntries(
-    Object.entries(readback).map(([key, result]) => [key, result.up ? 'UP' : 'DOWN'])
-  );
-  const allUp = Object.values(readback).every(result => result.up);
-  for (const [key, result] of Object.entries(readback)) {
-    latestStatus[key] = { status: publicStatus(result), checkedAt: timestamp };
-  }
-  const entry = {
-    id: ++cronRunId,
-    timestamp,
-    results,
-    overall: allUp ? 'ALL_UP' : 'PARTIAL_DOWN'
-  };
-  cronRuns.unshift(entry);
-  if (cronRuns.length > 10) cronRuns.pop();
-  return entry;
-}
-
 // schedule every 60s
-setInterval(runCronCheck, 60_000);
+setInterval(healthRuns.run, 60_000);
 
 // trigger first run shortly after start
-setTimeout(runCronCheck, 2_000);
+setTimeout(healthRuns.run, 2_000);
 
 // API to get last runs
 app.get('/api/cron/runs', (req, res) => {
-  res.json(cronRuns);
+  res.json(healthRuns.getRuns());
 });
 
 app.get('/api/helm-workloads', async (req, res) => {
@@ -603,7 +582,7 @@ app.get('/api/helm-workloads', async (req, res) => {
 app.post('/api/cron/run', async (req, res) => {
   // Each run fans out to every service; public callers must not trigger it.
   if (PUBLIC_MODE) return res.status(403).json(FORBIDDEN_IN_PUBLIC_MODE);
-  const entry = await runCronCheck();
+  const entry = await healthRuns.run();
   res.json(entry);
 });
 
