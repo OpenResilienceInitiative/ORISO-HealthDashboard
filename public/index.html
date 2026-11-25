@@ -56,6 +56,18 @@
         margin-bottom: 4px;
       }
       
+      button.svc {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        font: inherit;
+        text-align: left;
+      }
+
+      button.svc[hidden] {
+        display: none;
+      }
+
       .svc:hover { 
         background: #f1f5f9;
         color: #0f172a;
@@ -461,6 +473,8 @@
           <div class="brand-subtitle">System Monitor</div>
         </div>
         <div id="svc-list"></div>
+        <button class="svc" id="operator-action" type="button" hidden>Sign in</button>
+        <div class="muted" id="operator-message" role="status"></div>
       </aside>
       <main class="main">
         <div class="header">
@@ -481,15 +495,89 @@
       const urlEl = document.getElementById('svc-url');
       const stateEl = document.getElementById('svc-state');
       const detailsEl = document.getElementById('svc-details');
+      const operatorAction = document.getElementById('operator-action');
+      const operatorMessage = document.getElementById('operator-message');
+      const base = /^\/health(?:\/|$)/.test(window.location.pathname) ? '/health' : '';
+      const dashboardUrl = new URL(`${base}/`, window.location.origin);
 
       let services = {};
       let activeKey = null;
+      let operatorAuth;
+      let operatorSession = { authenticated: false, canViewHelmImages: false };
 
       function apiPath(path) {
-        const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-        const base = window.location.pathname.replace(/\/$/, '');
-        return base ? `${base}/${normalizedPath}` : `/${normalizedPath}`;
+        return `${base}${path}`;
       }
+
+      function setOperatorSession(session) {
+        operatorSession = session;
+        operatorAction.hidden = !operatorAuth;
+        operatorAction.textContent = session.authenticated ? 'Sign out' : 'Sign in';
+        if (!session.canViewHelmImages && activeKey === '__helm__') {
+          detailsEl.replaceChildren();
+          showHome();
+        } else {
+          renderOperatorInventoryEntry();
+        }
+      }
+
+      function renderOperatorInventoryEntry() {
+        listEl.querySelector('#operator-inventory-entry')?.remove();
+        const healthChecks = listEl.querySelector('#health-checks-entry');
+        if (!operatorSession.canViewHelmImages || !healthChecks) return;
+        const stack = document.createElement('button');
+        stack.id = 'operator-inventory-entry';
+        stack.type = 'button';
+        stack.className = 'svc' + (activeKey === '__helm__' ? ' active' : '');
+        stack.textContent = 'Helm Images';
+        stack.onclick = () => showHelmWorkloads();
+        healthChecks.after(stack);
+      }
+
+      function fetchOperator(route, headers) {
+        return fetch(apiPath(route), { headers, cache: 'no-store', credentials: 'omit', redirect: 'error' });
+      }
+
+      async function initializeOperator() {
+        try {
+          const response = await fetchOperator('/api/operator-session');
+          if (!response.ok) return;
+          const { login } = await response.json();
+          if (!login) return;
+          const { startOperatorAuth } = await import(apiPath('/operator-browser-auth.js'));
+          operatorAuth = await startOperatorAuth(login, dashboardUrl, () => {
+            setOperatorSession({ authenticated: false, canViewHelmImages: false });
+          });
+          const headers = operatorAuth.headers();
+          const validation = await fetchOperator('/api/operator-session', headers);
+          if (!validation.ok) throw new Error('Operator session is unavailable');
+          const verified = await validation.json();
+          if (headers.Authorization === operatorAuth.headers().Authorization) setOperatorSession(verified);
+        } catch {
+          operatorMessage.textContent = 'Operator sign-in is temporarily unavailable.';
+        } finally {
+          if (window.location.pathname === `${base}/auth/callback`) {
+            window.history.replaceState(window.history.state, '', dashboardUrl.href);
+          }
+        }
+      }
+
+      operatorAction.addEventListener('click', async () => {
+        operatorAction.disabled = true;
+        operatorMessage.textContent = '';
+        try {
+          if (operatorSession.authenticated) {
+            setOperatorSession({ authenticated: true, canViewHelmImages: false });
+            await operatorAuth.logout();
+          } else {
+            await operatorAuth.login();
+          }
+        } catch {
+          operatorMessage.textContent = 'Unable to complete operator sign-in or sign-out.';
+        } finally {
+          operatorAction.disabled = false;
+        }
+      });
 
       function statusPill(ok) {
         stateEl.className = 'pill ' + (ok ? 'ok' : 'bad');
@@ -514,6 +602,7 @@
 
         // Cron Jobs entry
         const cron = document.createElement('div');
+        cron.id = 'health-checks-entry';
         cron.className = 'svc';
         const cdot = document.createElement('div');
         cdot.className = 'status-dot';
@@ -548,28 +637,7 @@
             .catch(() => { dot.style.background = '#ef4444'; });
         });
 
-        // Helm Images entry is only shown when the API allows it (not for
-        // unauthenticated users, see #57). Probe first; hide only when refused (403),
-        // so an inventory error still shows the entry and its error message.
-        fetch(apiPath('/api/helm-workloads'))
-          .then(r => r.status === 403 ? null : r.json().catch(() => ({ workloads: [] })))
-          .then(data => {
-            // Skip if refused, or if the list was re-rendered meanwhile (that render
-            // runs its own probe), so the entry is never added twice.
-            if (!data || !cron.isConnected) return;
-            const stack = document.createElement('div');
-            stack.className = 'svc' + (activeKey === '__helm__' ? ' active' : '');
-            const sdot = document.createElement('div');
-            sdot.className = 'status-dot';
-            sdot.style.background = data.workloads && data.workloads.length > 0 ? '#10b981' : '#f59e0b';
-            const slabel = document.createElement('div');
-            slabel.textContent = 'Helm Images';
-            stack.appendChild(sdot);
-            stack.appendChild(slabel);
-            stack.onclick = () => showHelmWorkloads();
-            cron.after(stack);
-          })
-          .catch(() => {});
+        renderOperatorInventoryEntry();
       }
 
       function renderDetails(json) {
@@ -651,6 +719,7 @@
         stateEl.style.display = 'none';
         renderList();
         const quickLinks = await loadQuickLinks();
+        if (activeKey !== null) return;
         
         const quickLinksCard = quickLinks === null ? '' : `
           <div class="component-card" style="grid-column: 1 / -1;">
@@ -672,6 +741,7 @@
       }
 
       async function showHelmWorkloads() {
+        if (!operatorSession.canViewHelmImages) return;
         activeKey = '__helm__';
         titleEl.textContent = 'Helm Images';
         urlEl.textContent = 'Runtime image inventory for ORISO Helm-deployed workloads';
@@ -681,11 +751,14 @@
         detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1"><div style="text-align:center;padding:20px;color:#94a3b8">Loading Helm image inventory...</div></div>';
         
         try {
-          const inventory = await fetch(apiPath('/api/helm-workloads')).then(async r => {
-            const body = await r.json();
-            if (!r.ok) throw new Error(body.error || 'Unable to load Helm image inventory');
-            return body;
-          });
+          const response = await fetchOperator('/api/helm-workloads', operatorAuth.headers());
+          if (response.status === 403) {
+            setOperatorSession({ authenticated: operatorSession.authenticated, canViewHelmImages: false });
+            return;
+          }
+          const inventory = await response.json();
+          if (activeKey !== '__helm__' || !operatorSession.canViewHelmImages) return;
+          if (!response.ok) throw new Error(inventory.error || 'Unable to load Helm image inventory');
 
           const workloads = inventory.workloads || [];
           const totalContainers = workloads.reduce((sum, workload) => sum + Math.max((workload.containers || []).length, 1), 0);
@@ -701,6 +774,7 @@
             const readyPodCount = (workload.pods || []).filter(pod => pod.ready).length;
             const podCount = (workload.pods || []).length;
             const workloadReady = readyPodCount > 0 && readyPodCount === podCount;
+            const representativeBranch = containers[0]?.runningDigests?.length > 1;
             const sourceBranch = containers[0]?.sourceBranch || 'Unknown';
             const sourceBranchUrl = containers[0]?.sourceBranchUrl || '';
             const sourceBranchHtml = sourceBranchUrl
@@ -711,11 +785,19 @@
               const digest = container.digest || parseImageHash(container.imageID) || 'Pending';
               const image = container.runningImage || container.image || 'Pending';
               const imageLink = container.packageUrl || packageLinkForContainer(image || container.image, workload, container);
-              const branch = container.sourceBranch || 'Unknown';
-              const branchSource = container.sourceBranchSource || 'not exposed';
-              const digestHtml = imageLink
+              const observedDigests = container.runningDigests || [];
+              const mixedRollout = observedDigests.length > 1;
+              const representativeDigestHtml = imageLink
                 ? `<a href="${escapeAttribute(imageLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(digest)}</a>`
                 : escapeHtml(digest);
+              const digestHtml = mixedRollout
+                ? observedDigests.map(value => value === digest.toLowerCase()
+                  ? representativeDigestHtml
+                  : escapeHtml(value)).join('<br>')
+                : representativeDigestHtml;
+              const imageLinkNote = mixedRollout
+                ? 'The GitHub package link is for the representative image.'
+                : 'Opens the matching GitHub package/version.';
               const imageHtml = imageLink
                 ? `<a href="${escapeAttribute(imageLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(image)}</a>`
                 : escapeHtml(image);
@@ -731,13 +813,14 @@
                     </span>
                   </div>
                   <div class="info-row">
-                    <div class="info-label">Running Image</div>
+                    <div class="info-label">${mixedRollout ? 'Representative Image' : 'Running Image'}</div>
                     <div class="mono-value">${imageHtml}</div>
                   </div>
                   <div class="info-row">
-                    <div class="info-label">Image Digest</div>
+                    <div class="info-label">${mixedRollout ? 'Image Digests' : 'Image Digest'}</div>
+                    ${mixedRollout ? '<div class="image-link-note">Mixed rollout</div>' : ''}
                     <div class="mono-value">${digestHtml}</div>
-                    ${imageLink ? '<div class="image-link-note">Opens the matching GitHub package/version.</div>' : ''}
+                    ${imageLink ? `<div class="image-link-note">${imageLinkNote}</div>` : ''}
                   </div>
                 </div>
               `;
@@ -779,7 +862,7 @@
                   <div class="info-block">
                     <div class="info-title">Source</div>
                     <div class="info-row">
-                      <div class="info-label">Branch</div>
+                      <div class="info-label">${representativeBranch ? 'Branch (representative image)' : 'Branch'}</div>
                       <div class="info-value">${sourceBranchHtml}</div>
                     </div>
                     <div class="info-row">
@@ -812,6 +895,7 @@
 
           detailsEl.innerHTML = html;
         } catch (e) {
+          if (activeKey !== '__helm__' || !operatorSession.canViewHelmImages) return;
           detailsEl.innerHTML = '<div class="component-card" style="grid-column:1/-1;background:#fef2f2;border-color:#fecaca"><div style="color:#dc2626">Failed to load Helm image inventory: ' + escapeHtml(e.message) + '</div></div>';
         }
       }
@@ -986,6 +1070,7 @@
       }
 
       // Initialize
+      initializeOperator();
       fetch(apiPath('/api/services'))
         .then(r => r.json())
         .then(json => { 

@@ -41,7 +41,7 @@ test('operator-only endpoints are refused in public mode', () => {
   // Guards the wiring in server.js: each of these must short-circuit to 403
   // before doing any work when PUBLIC_MODE is on.
   const server = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
-  for (const route of ["app.get('/api/quick-links'", "app.get('/api/helm-workloads'", "app.post('/api/cron/run'"]) {
+  for (const route of ["app.get('/api/quick-links'", "app.post('/api/cron/run'"]) {
     const start = server.indexOf(route);
     assert.notEqual(start, -1, `${route} is missing`);
     const handler = server.slice(start, server.indexOf('\n});', start));

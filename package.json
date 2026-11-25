@@ -10,6 +10,8 @@
     "test": "node --test"
   },
   "dependencies": {
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "jose": "6.2.18",
+    "keycloak-js": "26.2.5"
   }
 }

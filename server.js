@@ -2,16 +2,20 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
+import { fileURLToPath } from 'node:url';
 
+import { createHealthRuns } from './health-runs.js';
 import { checkCatalog, checkService } from './health.js';
+import { KubernetesInventoryError, parseDigest, requestKubeJson, runningImageDigests } from './kube-inventory.js';
+import { createOperatorAuth } from './operator-auth.js';
 import { isPublicMode, publicHealth, publicServices, publicStatus } from './public-view.js';
 
 const app = express();
 const PORT = process.env.PORT || 9100;
 const HEALTH_CHECK_TIMEOUT_MS = Number(process.env.HEALTH_CHECK_TIMEOUT_MS || 5000);
-// Public mode (#57) is on unless ORISO_PUBLIC_MODE=false. It strips internal
-// details and disables operator-only endpoints until Keycloak login (#58).
+// Public mode shapes health responses. The inventory has its own Keycloak role gate.
 const PUBLIC_MODE = isPublicMode();
+const operatorAuth = createOperatorAuth();
 const FORBIDDEN_IN_PUBLIC_MODE = { error: 'This endpoint requires authorisation' };
 // Working directory where server.js is started; we assume you run from health-dashboard/
 const ROOT = path.resolve();
@@ -102,17 +106,6 @@ function currentNamespace() {
     process.env.KUBERNETES_NAMESPACE ||
     readFileIfExists(KUBE_NAMESPACE_PATH) ||
     'caritas';
-}
-
-function parseDigest(imageID) {
-  if (!imageID) return '';
-  const digestMatch = imageID.match(/@(sha256:[a-f0-9]+)/i);
-  if (digestMatch) return digestMatch[1];
-
-  const idMatch = imageID.match(/(?:^|:\/\/)(sha256:[a-f0-9]+)/i);
-  if (idMatch) return idMatch[1];
-
-  return imageID;
 }
 
 function imageTag(image) {
@@ -319,53 +312,31 @@ function helmReleaseAllowed(labels = {}) {
   return HELM_RELEASES.includes(labels['app.kubernetes.io/instance']);
 }
 
-function kubeRequest(apiPath) {
-  return new Promise((resolve, reject) => {
-    if (!KUBE_API_HOST) {
-      reject(new Error('Kubernetes API is not available outside the cluster'));
-      return;
+async function kubeRequest(apiPath) {
+  if (!KUBE_API_HOST) {
+    throw new KubernetesInventoryError('Kubernetes API is not available outside the cluster');
+  }
+
+  const token = readFileIfExists(KUBE_TOKEN_PATH);
+  if (!token) {
+    throw new KubernetesInventoryError('Kubernetes service account token is not available');
+  }
+
+  const requestOptions = {
+    hostname: KUBE_API_HOST,
+    port: KUBE_API_PORT,
+    path: apiPath,
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`
     }
+  };
 
-    const token = readFileIfExists(KUBE_TOKEN_PATH);
-    if (!token) {
-      reject(new Error('Kubernetes service account token is not available'));
-      return;
-    }
+  const ca = readFileIfExists(KUBE_CA_PATH);
+  if (ca) requestOptions.ca = ca;
 
-    const requestOptions = {
-      hostname: KUBE_API_HOST,
-      port: KUBE_API_PORT,
-      path: apiPath,
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`
-      }
-    };
-
-    const ca = readFileIfExists(KUBE_CA_PATH);
-    if (ca) requestOptions.ca = ca;
-
-    const req = https.request(requestOptions, response => {
-      let data = '';
-      response.on('data', chunk => (data += chunk));
-      response.on('end', () => {
-        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new Error(`Kubernetes API returned HTTP ${response.statusCode}: ${data}`));
-          return;
-        }
-
-        try {
-          resolve(JSON.parse(data || '{}'));
-        } catch (err) {
-          reject(err);
-        }
-      });
-    });
-
-    req.on('error', reject);
-    req.end();
-  });
+  return requestKubeJson(requestOptions);
 }
 
 async function containerRowsForWorkload(workload, pods) {
@@ -382,7 +353,11 @@ async function containerRowsForWorkload(workload, pods) {
       ...(pod.status?.initContainerStatuses || []),
       ...(pod.status?.containerStatuses || [])
     ]).filter(status => status.name === container.name);
-    const runningStatus = statuses.find(status => status.imageID) || statuses[0] || {};
+    const runningStatus =
+      statuses.find(status => status.state?.running && status.imageID) ||
+      statuses.find(status => status.imageID) ||
+      statuses[0] ||
+      {};
     const digest = parseDigest(runningStatus.imageID);
     const runningImage = runningStatus.image || container.image || '';
     const parsedImage = parseGhcrImage(runningImage) || parseGhcrImage(container.image || '');
@@ -410,6 +385,7 @@ async function containerRowsForWorkload(workload, pods) {
       runningImage,
       imageID: runningStatus.imageID || '',
       digest,
+      runningDigests: runningImageDigests(statuses),
       packageName,
       packageUrl: packageVersion.url,
       packageTags: packageVersion.tags,
@@ -523,6 +499,20 @@ try {
 app.use(express.static(path.join(ROOT, 'public')));
 app.use(express.json());
 
+const keycloakLibrary = path.dirname(fileURLToPath(import.meta.resolve('keycloak-js')));
+for (const file of ['keycloak.js', 'deprecations.js']) {
+  app.get(`/vendor/keycloak/${file}`, (req, res) => res.sendFile(file, { root: keycloakLibrary }));
+}
+// The ingress forwards the public /health/auth/callback as /auth/callback.
+app.get('/auth/callback', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile('index.html', { root: path.join(ROOT, 'public') });
+});
+app.get('/api/operator-session', async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  res.json(await operatorAuth.session(req.get('Authorization')));
+});
+
 app.get('/api/services', (req, res) => {
   res.json(PUBLIC_MODE ? publicServices(services) : services);
 });
@@ -532,14 +522,16 @@ app.get('/api/quick-links', (req, res) => {
   res.json(quickLinks);
 });
 
-// Latest per-service status from the scheduled run, served in public mode.
-const latestStatus = {};
+const healthRuns = createHealthRuns(
+  () => checkCatalog(services, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS }),
+  publicStatus
+);
 
 app.get('/api/health/:key', async (req, res) => {
   const key = req.params.key;
   const svc = Object.hasOwn(services, key) ? services[key] : undefined;
   if (!svc) return res.status(404).json({ error: 'Unknown service' });
-  if (PUBLIC_MODE) return res.json(publicHealth(latestStatus[key]));
+  if (PUBLIC_MODE) return res.json(publicHealth(healthRuns.getStatus(key)));
 
   const result = await checkService(svc, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS });
   if (result.up) return res.json(result.body);
@@ -557,43 +549,21 @@ app.get('/api/health/:key', async (req, res) => {
 // ------------------------------
 // Cron: health checks every 60s
 // ------------------------------
-let cronRunId = 0;
-const cronRuns = []; // keep last 10
-
-async function runCronCheck() {
-  const timestamp = new Date().toISOString();
-  const readback = await checkCatalog(services, { timeoutMs: HEALTH_CHECK_TIMEOUT_MS });
-  const results = Object.fromEntries(
-    Object.entries(readback).map(([key, result]) => [key, result.up ? 'UP' : 'DOWN'])
-  );
-  const allUp = Object.values(readback).every(result => result.up);
-  for (const [key, result] of Object.entries(readback)) {
-    latestStatus[key] = { status: publicStatus(result), checkedAt: timestamp };
-  }
-  const entry = {
-    id: ++cronRunId,
-    timestamp,
-    results,
-    overall: allUp ? 'ALL_UP' : 'PARTIAL_DOWN'
-  };
-  cronRuns.unshift(entry);
-  if (cronRuns.length > 10) cronRuns.pop();
-  return entry;
-}
-
 // schedule every 60s
-setInterval(runCronCheck, 60_000);
+setInterval(healthRuns.run, 60_000);
 
 // trigger first run shortly after start
-setTimeout(runCronCheck, 2_000);
+setTimeout(healthRuns.run, 2_000);
 
 // API to get last runs
 app.get('/api/cron/runs', (req, res) => {
-  res.json(cronRuns);
+  res.json(healthRuns.getRuns());
 });
 
 app.get('/api/helm-workloads', async (req, res) => {
-  if (PUBLIC_MODE) return res.status(403).json(FORBIDDEN_IN_PUBLIC_MODE);
+  res.set('Cache-Control', 'private, no-store');
+  const { canViewHelmImages } = await operatorAuth.session(req.get('Authorization'));
+  if (!canViewHelmImages) return res.status(403).json(FORBIDDEN_IN_PUBLIC_MODE);
   try {
     res.json(await getHelmWorkloads());
   } catch (err) {
@@ -603,7 +573,7 @@ app.get('/api/helm-workloads', async (req, res) => {
       count: 0,
       generatedAt: new Date().toISOString(),
       workloads: [],
-      error: err.message
+      error: err instanceof KubernetesInventoryError ? err.message : 'Unable to load Helm image inventory'
     });
   }
 });
@@ -612,7 +582,7 @@ app.get('/api/helm-workloads', async (req, res) => {
 app.post('/api/cron/run', async (req, res) => {
   // Each run fans out to every service; public callers must not trigger it.
   if (PUBLIC_MODE) return res.status(403).json(FORBIDDEN_IN_PUBLIC_MODE);
-  const entry = await runCronCheck();
+  const entry = await healthRuns.run();
   res.json(entry);
 });
 
